@@ -1,17 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Activity,
+  Bike,
   CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
   CircleGauge,
+  Dumbbell,
   Footprints,
+  HeartPulse,
+  PersonStanding,
   Plus,
   Scale,
   Sparkles,
+  Trash2,
+  Waves,
+  Zap,
   X,
 } from "lucide-react";
 import {
@@ -62,10 +77,28 @@ type WeightRecord = {
   createdAt: string;
 };
 
+type ActivityTypeDef = {
+  id?: number;
+  name: string;
+  iconKey: string;
+  color: string;
+  hidden?: number | boolean;
+  custom?: boolean;
+};
+
 type Period = "all" | "month" | "year";
 type View = "today" | "calendar" | "activity" | "weight";
 
-const activityTypes = ["Spinning", "Barre", "Caminar", "El·líptica", "Cinta de córrer", "Altres"];
+const defaultActivityTypes: ActivityTypeDef[] = [
+  { name: "Spinning", iconKey: "bike", color: "#17a673" },
+  { name: "Barre", iconKey: "balance", color: "#8dbb3d" },
+  { name: "Caminar", iconKey: "walk", color: "#e7a72d" },
+  { name: "El·líptica", iconKey: "gauge", color: "#309a91" },
+  { name: "Cinta de córrer", iconKey: "run", color: "#ef6b55" },
+  { name: "Altres", iconKey: "sparkles", color: "#8a72ca" },
+];
+const iconOptions = ["sparkles", "dumbbell", "heart", "waves", "zap", "walk"] as const;
+const colorOptions = ["#17a673", "#8dbb3d", "#e7a72d", "#ef6b55", "#309a91", "#8a72ca"];
 const monthNames = [
   "gener", "febrer", "març", "abril", "maig", "juny",
   "juliol", "agost", "setembre", "octubre", "novembre", "desembre",
@@ -106,22 +139,25 @@ function samePeriod(value: string, period: Period, anchor: Date) {
   return date.getFullYear() === anchor.getFullYear() && date.getMonth() === anchor.getMonth();
 }
 
-function ActivityGlyph({ type }: { type: string }) {
-  if (type === "Caminar" || type === "Cinta de córrer") return <Footprints />;
-  if (type === "El·líptica") return <CircleGauge />;
+function ActivityGlyph({ type, iconKey }: { type?: string; iconKey?: string }) {
+  const key = iconKey ??
+    (type === "Caminar" ? "walk" : type === "Cinta de córrer" ? "run" : type === "El·líptica" ? "gauge" : "activity");
+  if (key === "bike") return <Bike />;
+  if (key === "balance") return <PersonStanding />;
+  if (key === "walk" || key === "run") return <Footprints />;
+  if (key === "gauge") return <CircleGauge />;
+  if (key === "dumbbell") return <Dumbbell />;
+  if (key === "heart") return <HeartPulse />;
+  if (key === "waves") return <Waves />;
+  if (key === "zap") return <Zap />;
+  if (key === "sparkles") return <Sparkles />;
   return <Activity />;
 }
 
-function activityTone(type: string) {
-  const tones: Record<string, string> = {
-    Spinning: "#1f7a5c",
-    Barre: "#78a545",
-    Caminar: "#d6a329",
-    "El·líptica": "#4b9481",
-    "Cinta de córrer": "#345f49",
-    Altres: "#83a98c",
-  };
-  return tones[type] ?? tones.Altres;
+function definitionFor(type: string, definitions: ActivityTypeDef[]) {
+  return definitions.find((item) => item.name === type) ??
+    defaultActivityTypes.find((item) => item.name === type) ??
+    { name: type, iconKey: "sparkles", color: "#6f9f78" };
 }
 
 export function ActivatApp() {
@@ -129,6 +165,7 @@ export function ActivatApp() {
   const [view, setView] = useState<View>("today");
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [weights, setWeights] = useState<WeightRecord[]>([]);
+  const [activityTypePrefs, setActivityTypePrefs] = useState<ActivityTypeDef[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -142,6 +179,10 @@ export function ActivatApp() {
   const [activityType, setActivityType] = useState("Spinning");
   const [activityTime, setActivityTime] = useState("");
   const [alreadyDone, setAlreadyDone] = useState(false);
+  const [newActivityOpen, setNewActivityOpen] = useState(false);
+  const [newActivityName, setNewActivityName] = useState("");
+  const [newActivityIcon, setNewActivityIcon] = useState("sparkles");
+  const [newActivityColor, setNewActivityColor] = useState("#17a673");
 
   const [activityFilter, setActivityFilter] = useState("Totes");
   const [activityPeriod, setActivityPeriod] = useState<Period>("all");
@@ -160,11 +201,13 @@ export function ActivatApp() {
       const data = (await response.json()) as {
         activities?: ActivityRecord[];
         weights?: WeightRecord[];
+        activityTypes?: ActivityTypeDef[];
         error?: string;
       };
       if (!response.ok) throw new Error(data.error ?? "No s’han pogut carregar les dades.");
       setActivities(data.activities ?? []);
       setWeights(data.weights ?? []);
+      setActivityTypePrefs(data.activityTypes ?? []);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "No s’han pogut carregar les dades.");
     } finally {
@@ -210,6 +253,22 @@ export function ActivatApp() {
     [activities, today],
   );
 
+  const activityTypes = useMemo(() => {
+    const preferences = new Map(activityTypePrefs.map((item) => [item.name, item]));
+    const defaults = defaultActivityTypes
+      .map((item) => ({ ...item, ...preferences.get(item.name), custom: false }))
+      .filter((item) => !item.hidden);
+    const custom = activityTypePrefs
+      .filter((item) => !defaultActivityTypes.some((base) => base.name === item.name) && !item.hidden)
+      .map((item) => ({ ...item, custom: true }));
+    return [...defaults, ...custom];
+  }, [activityTypePrefs]);
+
+  const activityFilterOptions = useMemo(
+    () => Array.from(new Set([...activityTypes.map((item) => item.name), ...activities.map((item) => item.type)])),
+    [activityTypes, activities],
+  );
+
   const completedThisMonth = useMemo(() => {
     const now = new Date();
     return activities.filter(
@@ -242,14 +301,14 @@ export function ActivatApp() {
 
   const activityChart = useMemo(
     () =>
-      activityTypes
+      Array.from(new Set(activityHistory.filter((item) => item.status === "completed").map((item) => item.type)))
         .map((type) => ({
           name: type === "Cinta de córrer" ? "Cinta" : type,
           total: activityHistory.filter((item) => item.status === "completed" && item.type === type).length,
-          fill: activityTone(type),
+          fill: definitionFor(type, activityTypes).color,
         }))
         .filter((item) => item.total > 0),
-    [activityHistory],
+    [activityHistory, activityTypes],
   );
 
   const filteredWeights = useMemo(
@@ -267,6 +326,10 @@ export function ActivatApp() {
     latestWeight && previousWeight ? latestWeight.weight - previousWeight.weight : null;
 
   async function addActivity() {
+    if (!activityType || !activityTypes.some((item) => item.name === activityType)) {
+      setError("Tria una activitat abans de desar.");
+      return;
+    }
     const saved = await postData({
       action: "addActivity",
       type: activityType,
@@ -285,6 +348,42 @@ export function ActivatApp() {
     await postData({ action: "updateActivity", id, status });
   }
 
+  async function deleteActivity(id: number) {
+    await postData({ action: "deleteActivity", id });
+  }
+
+  async function saveActivityType() {
+    const name = newActivityName.trim();
+    if (!name) {
+      setError("Escriu el nom de la nova activitat.");
+      return;
+    }
+    const saved = await postData({
+      action: "saveActivityType",
+      name,
+      iconKey: newActivityIcon,
+      color: newActivityColor,
+    });
+    if (saved) {
+      setActivityType(name);
+      setNewActivityOpen(false);
+      setNewActivityName("");
+    }
+  }
+
+  async function deleteActivityType(definition: ActivityTypeDef) {
+    const saved = await postData({
+      action: "deleteActivityType",
+      name: definition.name,
+      iconKey: definition.iconKey,
+      color: definition.color,
+    });
+    if (saved && activityType === definition.name) {
+      const next = activityTypes.find((item) => item.name !== definition.name);
+      setActivityType(next?.name ?? "");
+    }
+  }
+
   async function addWeight() {
     const value = Number(weightValue.replace(",", "."));
     const saved = await postData({
@@ -300,6 +399,9 @@ export function ActivatApp() {
 
   function openActivityFor(date: string) {
     setSelectedDate(date);
+    if (!activityTypes.some((item) => item.name === activityType)) {
+      setActivityType(activityTypes[0]?.name ?? "");
+    }
     const parsed = parseIso(date);
     setCalendarMonth(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
     setActivityOpen(true);
@@ -350,44 +452,69 @@ export function ActivatApp() {
       ) : (
         <>
           <TabsContent value="today" className="content page-stack">
-            <section className="hero-card">
-              <div className="hero-orb"><Activity /></div>
-              <p className="card-kicker">PROPERA ACTIVITAT</p>
-              {nextActivity ? (
-                <>
-                  <h2>{nextActivity.type}</h2>
-                  <p className="hero-date">
-                    {longDate(nextActivity.activityDate)}
-                    {nextActivity.startTime ? ` · ${nextActivity.startTime} h` : ""}
-                  </p>
-                  <div className="hero-actions">
-                    <Button
-                      size="lg"
-                      className="complete-button"
-                      disabled={busy}
-                      onClick={() => void updateActivity(nextActivity.id, "completed")}
+            <section className="motivation-banner">
+              <div className="motivation-icon"><Zap /></div>
+              <div><span>EL MOVIMENT SUMA</span><strong>Avui també compta.</strong></div>
+              <div className="month-score"><b>{completedThisMonth}</b><small>aquest mes</small></div>
+            </section>
+            {nextActivity ? (
+              <>
+                <SwipeableShell
+                  className="hero-swipe"
+                  disabled={busy}
+                  onDelete={() => void deleteActivity(nextActivity.id)}
+                  onCancel={() => void updateActivity(nextActivity.id, "cancelled")}
+                >
+                  <section className="hero-card">
+                    <div
+                      className="hero-orb"
+                      style={{ color: definitionFor(nextActivity.type, activityTypes).color }}
                     >
-                      <Check /> Marcar com a feta
-                    </Button>
-                    <Button
-                      size="lg"
-                      variant="outline"
-                      className="cancel-button"
-                      disabled={busy}
-                      onClick={() => void updateActivity(nextActivity.id, "cancelled")}
-                    >
-                      M’he hagut d’esborrar
-                    </Button>
-                  </div>
-                </>
-              ) : (
+                      <ActivityGlyph
+                        type={nextActivity.type}
+                        iconKey={definitionFor(nextActivity.type, activityTypes).iconKey}
+                      />
+                    </div>
+                    <p className="card-kicker">PROPERA ACTIVITAT</p>
+                    <h2>{nextActivity.type}</h2>
+                    <p className="hero-date">
+                      {longDate(nextActivity.activityDate)}
+                      {nextActivity.startTime ? ` · ${nextActivity.startTime} h` : ""}
+                    </p>
+                    <div className="hero-actions">
+                      <Button
+                        size="lg"
+                        className="complete-button"
+                        disabled={busy}
+                        onClick={() => void updateActivity(nextActivity.id, "completed")}
+                      >
+                        <Check /> Marcar com a feta
+                      </Button>
+                      <Button
+                        size="lg"
+                        variant="outline"
+                        className="cancel-button"
+                        disabled={busy}
+                        onClick={() => void updateActivity(nextActivity.id, "cancelled")}
+                      >
+                        M’he hagut d’esborrar
+                      </Button>
+                    </div>
+                  </section>
+                </SwipeableShell>
+                <p className="swipe-help"><span>→ Esborrar</span><span>← Cancel·lar</span></p>
+              </>
+            ) : (
+              <section className="hero-card hero-empty-card">
+                <div className="hero-orb"><Activity /></div>
+                <p className="card-kicker">PROPERA ACTIVITAT</p>
                 <div className="empty-hero">
                   <h2>Cap activitat pendent</h2>
                   <p>Quan en programis una, la trobaràs aquí.</p>
                   <Button size="lg" onClick={() => openActivityFor(today)}><Plus /> Afegir activitat</Button>
                 </div>
-              )}
-            </section>
+              </section>
+            )}
 
             <section className="today-grid">
               <button type="button" className="metric-card clickable" onClick={() => setView("activity")}>
@@ -468,7 +595,7 @@ export function ActivatApp() {
                         {entries.slice(0, 3).map((entry) => (
                           <i
                             key={entry.id}
-                            style={{ background: entry.status === "cancelled" ? "#b8b8b0" : activityTone(entry.type) }}
+                            style={{ background: entry.status === "cancelled" ? "#b8b8b0" : definitionFor(entry.type, activityTypes).color }}
                           />
                         ))}
                       </div>
@@ -492,12 +619,66 @@ export function ActivatApp() {
               ) : (
                 activities
                   .filter((item) => item.activityDate === selectedDate)
-                  .map((item) => <ActivityRow key={item.id} item={item} />)
+                  .map((item) =>
+                    item.status === "scheduled" ? (
+                      <SwipeableShell
+                        key={item.id}
+                        disabled={busy}
+                        onDelete={() => void deleteActivity(item.id)}
+                        onCancel={() => void updateActivity(item.id, "cancelled")}
+                      >
+                        <ActivityRow item={item} definition={definitionFor(item.type, activityTypes)} />
+                      </SwipeableShell>
+                    ) : (
+                      <ActivityRow key={item.id} item={item} definition={definitionFor(item.type, activityTypes)} />
+                    ),
+                  )
               )}
             </div>
+            {activities.some((item) => item.activityDate === selectedDate && item.status === "scheduled") && (
+              <p className="swipe-help"><span>→ Esborrar</span><span>← Cancel·lar</span></p>
+            )}
           </TabsContent>
 
           <TabsContent value="activity" className="content page-stack">
+            <section className="activity-catalog">
+              <div className="section-heading catalog-heading">
+                <div><p className="card-kicker">LES TEVES ACTIVITATS</p><h2>Què et ve de gust fer?</h2></div>
+                <Button variant="outline" onClick={() => setNewActivityOpen(true)}><Plus /> Nova</Button>
+              </div>
+              <div className="activity-type-grid">
+                {activityTypes.map((definition) => (
+                  <div
+                    className="activity-type-card"
+                    key={definition.name}
+                    style={{ "--activity-color": definition.color } as CSSProperties}
+                  >
+                    <button
+                      type="button"
+                      className="type-card-main"
+                      onClick={() => {
+                        setActivityType(definition.name);
+                        openActivityFor(today);
+                      }}
+                    >
+                      <span className="activity-type-icon"><ActivityGlyph type={definition.name} iconKey={definition.iconKey} /></span>
+                      <strong>{definition.name}</strong>
+                    </button>
+                    <button
+                      type="button"
+                      className="remove-type"
+                      aria-label={`Esborrar ${definition.name}`}
+                      onClick={() => void deleteActivityType(definition)}
+                    ><X /></button>
+                  </div>
+                ))}
+                <button type="button" className="activity-type-card add-type-card" onClick={() => setNewActivityOpen(true)}>
+                  <span className="activity-type-icon"><Plus /></span>
+                  <strong>Afegir-ne una</strong>
+                </button>
+              </div>
+            </section>
+
             <section className="filter-panel">
               <div className="filter-field">
                 <Label>Tipus d’activitat</Label>
@@ -505,7 +686,7 @@ export function ActivatApp() {
                   <SelectTrigger className="large-select"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Totes">Totes les activitats</SelectItem>
-                    {activityTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
+                    {activityFilterOptions.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -549,7 +730,9 @@ export function ActivatApp() {
               <div className="section-heading"><div><p className="card-kicker">HISTORIAL</p><h2>Registre d’activitats</h2></div></div>
               <div className="history-list">
                 {activityHistory.length ? (
-                  activityHistory.map((item) => <ActivityRow key={item.id} item={item} />)
+                  activityHistory.map((item) => (
+                    <ActivityRow key={item.id} item={item} definition={definitionFor(item.type, activityTypes)} />
+                  ))
                 ) : (
                   <EmptyState text="No hi ha cap activitat amb aquests filtres." />
                 )}
@@ -659,12 +842,23 @@ export function ActivatApp() {
             </div>
             <div className="form-field">
               <Label>Activitat</Label>
-              <Select value={activityType} onValueChange={setActivityType}>
-                <SelectTrigger className="large-select"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {activityTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <div className="activity-picker-grid">
+                {activityTypes.map((definition) => (
+                  <button
+                    type="button"
+                    key={definition.name}
+                    className={activityType === definition.name ? "selected" : ""}
+                    style={{ "--activity-color": definition.color } as CSSProperties}
+                    onClick={() => setActivityType(definition.name)}
+                  >
+                    <span><ActivityGlyph type={definition.name} iconKey={definition.iconKey} /></span>
+                    <strong>{definition.name}</strong>
+                  </button>
+                ))}
+                <button type="button" className="new-picker-card" onClick={() => setNewActivityOpen(true)}>
+                  <span><Plus /></span><strong>Nova</strong>
+                </button>
+              </div>
             </div>
             <div className="form-field">
               <Label htmlFor="activity-time">Hora d’inici <span>(opcional)</span></Label>
@@ -677,8 +871,68 @@ export function ActivatApp() {
           </div>
           <DialogFooter>
             <Button variant="outline" size="lg" onClick={() => setActivityOpen(false)}>Cancel·lar</Button>
-            <Button size="lg" disabled={busy} onClick={() => void addActivity()}>
+            <Button size="lg" disabled={busy || !activityType || !activityTypes.length} onClick={() => void addActivity()}>
               {busy ? "Desant…" : "Desar activitat"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={newActivityOpen} onOpenChange={setNewActivityOpen}>
+        <DialogContent className="form-dialog new-type-dialog">
+          <DialogHeader>
+            <DialogTitle>Nova activitat</DialogTitle>
+            <DialogDescription>Posa-li un nom i tria el dibuix i el color que la representaran.</DialogDescription>
+          </DialogHeader>
+          <div className="form-stack">
+            <div className="form-field">
+              <Label htmlFor="new-activity-name">Nom</Label>
+              <Input
+                id="new-activity-name"
+                placeholder="Per exemple, Pilates"
+                maxLength={36}
+                value={newActivityName}
+                onChange={(event) => setNewActivityName(event.target.value)}
+              />
+            </div>
+            <div className="form-field">
+              <Label>Dibuix</Label>
+              <div className="icon-choice-grid">
+                {iconOptions.map((icon) => (
+                  <button
+                    type="button"
+                    key={icon}
+                    className={newActivityIcon === icon ? "selected" : ""}
+                    onClick={() => setNewActivityIcon(icon)}
+                    aria-label={`Dibuix ${icon}`}
+                  ><ActivityGlyph iconKey={icon} /></button>
+                ))}
+              </div>
+            </div>
+            <div className="form-field">
+              <Label>Color</Label>
+              <div className="color-choice-grid">
+                {colorOptions.map((color) => (
+                  <button
+                    type="button"
+                    key={color}
+                    className={newActivityColor === color ? "selected" : ""}
+                    style={{ background: color }}
+                    onClick={() => setNewActivityColor(color)}
+                    aria-label={`Color ${color}`}
+                  >{newActivityColor === color && <Check />}</button>
+                ))}
+              </div>
+            </div>
+            <div className="type-preview" style={{ "--activity-color": newActivityColor } as CSSProperties}>
+              <span><ActivityGlyph iconKey={newActivityIcon} /></span>
+              <strong>{newActivityName || "La teva activitat"}</strong>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="lg" onClick={() => setNewActivityOpen(false)}>Cancel·lar</Button>
+            <Button size="lg" disabled={busy || !newActivityName.trim()} onClick={() => void saveActivityType()}>
+              {busy ? "Desant…" : "Crear activitat"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -764,10 +1018,80 @@ function PeriodPicker({
   );
 }
 
-function ActivityRow({ item }: { item: ActivityRecord }) {
+function SwipeableShell({
+  children,
+  onDelete,
+  onCancel,
+  disabled = false,
+  className = "",
+}: {
+  children: ReactNode;
+  onDelete: () => void;
+  onCancel: () => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const startX = useRef<number | null>(null);
+  const offsetRef = useRef(0);
+  const [offset, setOffset] = useState(0);
+
+  function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (disabled) return;
+    startX.current = event.clientX;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (startX.current === null || disabled) return;
+    const distance = Math.max(-110, Math.min(110, event.clientX - startX.current));
+    offsetRef.current = distance;
+    setOffset(distance);
+  }
+
+  function finishSwipe() {
+    if (startX.current === null) return;
+    startX.current = null;
+    if (offsetRef.current > 72) {
+      offsetRef.current = 120;
+      setOffset(120);
+      window.setTimeout(onDelete, 120);
+    } else if (offsetRef.current < -72) {
+      offsetRef.current = -120;
+      setOffset(-120);
+      window.setTimeout(onCancel, 120);
+    } else {
+      offsetRef.current = 0;
+      setOffset(0);
+    }
+  }
+
+  return (
+    <div className={`swipe-shell ${className}`}>
+      <button type="button" className="swipe-action delete" onClick={onDelete} aria-label="Esborrar activitat"><Trash2 /></button>
+      <button type="button" className="swipe-action cancel" onClick={onCancel} aria-label="Cancel·lar activitat"><X /></button>
+      <div
+        className="swipe-content"
+        style={{ transform: `translateX(${offset}px)` }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={finishSwipe}
+        onPointerCancel={() => {
+          startX.current = null;
+          offsetRef.current = 0;
+          setOffset(0);
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ActivityRow({ item, definition }: { item: ActivityRecord; definition?: ActivityTypeDef }) {
+  const currentDefinition = definition ?? definitionFor(item.type, defaultActivityTypes);
   return (
     <article className="activity-row">
-      <span className="activity-row-icon" style={{ background: `${activityTone(item.type)}1f`, color: activityTone(item.type) }}><ActivityGlyph type={item.type} /></span>
+      <span className="activity-row-icon" style={{ background: `${currentDefinition.color}1f`, color: currentDefinition.color }}><ActivityGlyph type={item.type} iconKey={currentDefinition.iconKey} /></span>
       <div className="activity-row-main">
         <strong>{item.type}</strong>
         <span>{shortDate(item.activityDate)}{item.startTime ? ` · ${item.startTime} h` : ""}</span>

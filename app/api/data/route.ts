@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 
 type ActivityPayload = {
-  action?: "addActivity" | "updateActivity" | "addWeight";
+  action?: "addActivity" | "updateActivity" | "deleteActivity" | "addWeight" | "saveActivityType" | "deleteActivityType";
   id?: number;
   type?: string;
   activityDate?: string;
@@ -9,6 +9,9 @@ type ActivityPayload = {
   status?: "scheduled" | "completed" | "cancelled";
   weight?: number;
   measuredAt?: string;
+  name?: string;
+  iconKey?: string;
+  color?: string;
 };
 
 function ownerFrom(request: Request) {
@@ -27,12 +30,17 @@ export async function GET(request: Request) {
   if (!ownerKey) return Response.json({ error: "Cal iniciar sessió amb OpenAI." }, { status: 401 });
 
   try {
-    const [activitiesResult, weightsResult] = await env.DB.batch([
+    const [activitiesResult, activityTypesResult, weightsResult] = await env.DB.batch([
       env.DB.prepare(
         `SELECT id, type, activity_date AS activityDate, start_time AS startTime,
                 status, created_at AS createdAt
          FROM activities WHERE owner_key = ?
          ORDER BY activity_date DESC, COALESCE(start_time, '23:59') DESC, id DESC`,
+      ).bind(ownerKey),
+      env.DB.prepare(
+        `SELECT id, name, icon_key AS iconKey, color, hidden
+         FROM activity_types WHERE owner_key = ?
+         ORDER BY created_at ASC, id ASC`,
       ).bind(ownerKey),
       env.DB.prepare(
         `SELECT id, weight, measured_at AS measuredAt, created_at AS createdAt
@@ -44,6 +52,7 @@ export async function GET(request: Request) {
     return Response.json({
       activities: activitiesResult.results ?? [],
       weights: weightsResult.results ?? [],
+      activityTypes: activityTypesResult.results ?? [],
     });
   } catch (error) {
     return Response.json({ error: errorMessage(error) }, { status: 500 });
@@ -75,6 +84,13 @@ export async function POST(request: Request) {
       await env.DB.prepare(
         "UPDATE activities SET status = ? WHERE id = ? AND owner_key = ?",
       ).bind(payload.status, payload.id, ownerKey).run();
+    } else if (payload.action === "deleteActivity") {
+      if (!payload.id) {
+        return Response.json({ error: "No s’ha trobat l’activitat." }, { status: 400 });
+      }
+      await env.DB.prepare(
+        "DELETE FROM activities WHERE id = ? AND owner_key = ? AND status = 'scheduled'",
+      ).bind(payload.id, ownerKey).run();
     } else if (payload.action === "addWeight") {
       if (!payload.measuredAt || !payload.weight || payload.weight < 20 || payload.weight > 300) {
         return Response.json({ error: "Introdueix un pes vàlid." }, { status: 400 });
@@ -82,6 +98,28 @@ export async function POST(request: Request) {
       await env.DB.prepare(
         "INSERT INTO weights (owner_key, weight, measured_at) VALUES (?, ?, ?)",
       ).bind(ownerKey, payload.weight, payload.measuredAt).run();
+    } else if (payload.action === "saveActivityType") {
+      const name = payload.name?.trim();
+      if (!name || name.length > 36) {
+        return Response.json({ error: "Escriu un nom d’activitat vàlid." }, { status: 400 });
+      }
+      await env.DB.prepare(
+        `INSERT INTO activity_types (owner_key, name, icon_key, color, hidden)
+         VALUES (?, ?, ?, ?, 0)
+         ON CONFLICT(owner_key, name)
+         DO UPDATE SET icon_key = excluded.icon_key, color = excluded.color, hidden = 0`,
+      ).bind(ownerKey, name, payload.iconKey || "sparkles", payload.color || "#65a84f").run();
+    } else if (payload.action === "deleteActivityType") {
+      const name = payload.name?.trim();
+      if (!name) {
+        return Response.json({ error: "No s’ha trobat el tipus d’activitat." }, { status: 400 });
+      }
+      await env.DB.prepare(
+        `INSERT INTO activity_types (owner_key, name, icon_key, color, hidden)
+         VALUES (?, ?, ?, ?, 1)
+         ON CONFLICT(owner_key, name)
+         DO UPDATE SET hidden = 1`,
+      ).bind(ownerKey, name, payload.iconKey || "sparkles", payload.color || "#65a84f").run();
     } else {
       return Response.json({ error: "Acció no reconeguda." }, { status: 400 });
     }
