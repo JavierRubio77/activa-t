@@ -450,7 +450,7 @@ export function ActivatApp() {
 
   function openNewWeight() {
     setEditingWeightId(null);
-    setWeightValue("");
+    setWeightValue(latestWeight ? String(latestWeight.weight).replace(".", ",") : "");
     setWeightDate(today);
     setWeightOpen(true);
   }
