@@ -205,6 +205,8 @@ export function ActivatApp() {
   const [weightAnchor, setWeightAnchor] = useState(new Date());
 
   const [weightOpen, setWeightOpen] = useState(false);
+  const [editingWeightId, setEditingWeightId] = useState<number | null>(null);
+  const [pendingWeightDelete, setPendingWeightDelete] = useState<WeightRecord | null>(null);
   const [weightValue, setWeightValue] = useState("");
   const [weightDate, setWeightDate] = useState(today);
 
@@ -434,14 +436,35 @@ export function ActivatApp() {
   async function addWeight() {
     const value = Number(weightValue.replace(",", "."));
     const saved = await postData({
-      action: "addWeight",
+      action: editingWeightId ? "editWeight" : "addWeight",
+      id: editingWeightId,
       weight: value,
       measuredAt: weightDate,
     });
     if (saved) {
       setWeightOpen(false);
+      setEditingWeightId(null);
       setWeightValue("");
     }
+  }
+
+  function openNewWeight() {
+    setEditingWeightId(null);
+    setWeightValue("");
+    setWeightDate(today);
+    setWeightOpen(true);
+  }
+
+  function openWeightEditor(weight: WeightRecord) {
+    setEditingWeightId(weight.id);
+    setWeightValue(String(weight.weight).replace(".", ","));
+    setWeightDate(weight.measuredAt);
+    setWeightOpen(true);
+  }
+
+  async function deleteWeight(id: number) {
+    const deleted = await postData({ action: "deleteWeight", id });
+    if (deleted) setPendingWeightDelete(null);
   }
 
   function openActivityFor(date: string) {
@@ -892,7 +915,7 @@ export function ActivatApp() {
                   ? "Sense comparativa"
                   : `${weightDifference > 0 ? "+" : ""}${formatWeight(weightDifference)} kg`}
               </div>
-              <Button size="lg" className="weight-add" onClick={() => setWeightOpen(true)}>
+              <Button size="lg" className="weight-add" onClick={openNewWeight}>
                 <Plus /> Registrar pes
               </Button>
             </section>
@@ -945,17 +968,26 @@ export function ActivatApp() {
                   const previous = list[index + 1];
                   const diff = previous ? item.weight - previous.weight : null;
                   return (
-                    <div className="weight-row" key={item.id}>
-                      <span className="weight-row-icon"><Scale /></span>
-                      <div><strong>{formatWeight(item.weight)} kg</strong><span>{shortDate(item.measuredAt)}</span></div>
-                      <em className={diff && diff > 0 ? "up" : ""}>
-                        {diff === null ? "—" : `${diff > 0 ? "+" : ""}${formatWeight(diff)}`}
-                      </em>
-                    </div>
+                    <SwipeableShell
+                      key={item.id}
+                      className="weight-swipe"
+                      disabled={busy}
+                      onDelete={() => setPendingWeightDelete(item)}
+                      onOpen={() => openWeightEditor(item)}
+                    >
+                      <div className="weight-row">
+                        <span className="weight-row-icon"><Scale /></span>
+                        <div><strong>{formatWeight(item.weight)} kg</strong><span>{shortDate(item.measuredAt)}</span></div>
+                        <em className={diff && diff > 0 ? "up" : ""}>
+                          {diff === null ? "—" : `${diff > 0 ? "+" : ""}${formatWeight(diff)}`}
+                        </em>
+                      </div>
+                    </SwipeableShell>
                   );
                 })}
                 {!filteredWeights.length && <EmptyState text="No hi ha cap pes amb aquest filtre." />}
               </div>
+              {filteredWeights.length > 0 && <p className="swipe-help weight-swipe-help"><span>→ Esborrar</span></p>}
             </section>
           </TabsContent>
         </>
@@ -1112,11 +1144,19 @@ export function ActivatApp() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={weightOpen} onOpenChange={setWeightOpen}>
+      <Dialog
+        open={weightOpen}
+        onOpenChange={(open) => {
+          setWeightOpen(open);
+          if (!open) setEditingWeightId(null);
+        }}
+      >
         <DialogContent className="form-dialog">
           <DialogHeader>
-            <DialogTitle>Registrar el pes</DialogTitle>
-            <DialogDescription>Afegeix una nova mesura al teu històric.</DialogDescription>
+            <DialogTitle>{editingWeightId ? "Editar el pes" : "Registrar el pes"}</DialogTitle>
+            <DialogDescription>
+              {editingWeightId ? "Modifica el pes o la data del registre." : "Afegeix una nova mesura al teu històric."}
+            </DialogDescription>
           </DialogHeader>
           <div className="form-stack">
             <div className="form-field">
@@ -1138,9 +1178,16 @@ export function ActivatApp() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" size="lg" onClick={() => setWeightOpen(false)}>Cancel·lar</Button>
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => {
+                setWeightOpen(false);
+                setEditingWeightId(null);
+              }}
+            >Cancel·lar</Button>
             <Button size="lg" disabled={busy || !weightValue} onClick={() => void addWeight()}>
-              {busy ? "Desant…" : "Desar pes"}
+              {busy ? "Desant…" : editingWeightId ? "Desar canvis" : "Desar pes"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1180,6 +1227,27 @@ export function ActivatApp() {
                   ? pendingAction.activity.status === "completed" ? "Sí, fer pendent" : "Sí, activar"
                   : "Sí, cancel·lar"}
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={pendingWeightDelete !== null} onOpenChange={(open) => !open && setPendingWeightDelete(null)}>
+        <AlertDialogContent className="confirm-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Esborrar el registre de pes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingWeightDelete
+                ? `S’eliminarà el registre de ${formatWeight(pendingWeightDelete.weight)} kg del ${shortDate(pendingWeightDelete.measuredAt)}. Aquesta acció no es pot desfer.`
+                : "Aquesta acció no es pot desfer."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Tornar</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={busy}
+              onClick={() => pendingWeightDelete && void deleteWeight(pendingWeightDelete.id)}
+            >Sí, esborrar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1241,7 +1309,7 @@ function SwipeableShell({
 }: {
   children: ReactNode;
   onDelete: () => void;
-  onSecondary: () => void;
+  onSecondary?: () => void;
   onOpen?: () => void;
   secondaryLabel?: string;
   disabled?: boolean;
@@ -1261,8 +1329,10 @@ function SwipeableShell({
 
   function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
     if (startX.current === null || disabled) return;
-    const distance = Math.max(-110, Math.min(110, event.clientX - startX.current));
-    if (Math.abs(distance) > 6) draggedRef.current = true;
+    const minimum = onSecondary ? -110 : 0;
+    const rawDistance = event.clientX - startX.current;
+    const distance = Math.max(minimum, Math.min(110, rawDistance));
+    if (Math.abs(rawDistance) > 6) draggedRef.current = true;
     offsetRef.current = distance;
     setOffset(distance);
   }
@@ -1278,7 +1348,7 @@ function SwipeableShell({
         setOffset(0);
         onDelete();
       }, 120);
-    } else if (offsetRef.current < -72) {
+    } else if (onSecondary && offsetRef.current < -72) {
       offsetRef.current = -120;
       setOffset(-120);
       window.setTimeout(() => {
@@ -1293,9 +1363,9 @@ function SwipeableShell({
   }
 
   return (
-    <div className={`swipe-shell ${className}`}>
+    <div className={`swipe-shell ${onSecondary ? "" : "delete-only"} ${className}`}>
       <button type="button" className="swipe-action delete" onClick={onDelete}>Esborrar</button>
-      <button type="button" className="swipe-action cancel" onClick={onSecondary}>{secondaryLabel}</button>
+      {onSecondary && <button type="button" className="swipe-action cancel" onClick={onSecondary}>{secondaryLabel}</button>}
       <div
         className={`swipe-content ${onOpen ? "is-editable" : ""}`}
         style={{ transform: `translateX(${offset}px)` }}

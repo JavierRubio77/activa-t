@@ -309,6 +309,9 @@ button { -webkit-tap-highlight-color: transparent; }
   border-radius: 20px;
   background: linear-gradient(90deg, #dc4e43 0 50%, #db9d2e 50% 100%);
 }
+.swipe-shell.delete-only { background: #dc4e43; }
+.weight-swipe { border-radius: 19px; }
+.weight-swipe-help { margin-top: 10px; }
 
 .hero-swipe { border-radius: 30px; box-shadow: 0 22px 50px rgba(23, 76, 58, .18); }
 .swipe-content {

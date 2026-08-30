@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 
 type ActivityPayload = {
-  action?: "addActivity" | "editActivity" | "updateActivity" | "deleteActivity" | "addWeight" | "saveActivityType" | "deleteActivityType";
+  action?: "addActivity" | "editActivity" | "updateActivity" | "deleteActivity" | "addWeight" | "editWeight" | "deleteWeight" | "saveActivityType" | "deleteActivityType";
   id?: number;
   type?: string;
   activityDate?: string;
@@ -110,6 +110,20 @@ export async function POST(request: Request) {
       await env.DB.prepare(
         "INSERT INTO weights (owner_key, weight, measured_at) VALUES (?, ?, ?)",
       ).bind(ownerKey, payload.weight, payload.measuredAt).run();
+    } else if (payload.action === "editWeight") {
+      if (!payload.id || !payload.measuredAt || !payload.weight || payload.weight < 20 || payload.weight > 300) {
+        return Response.json({ error: "Introdueix un pes vàlid." }, { status: 400 });
+      }
+      await env.DB.prepare(
+        "UPDATE weights SET weight = ?, measured_at = ? WHERE id = ? AND owner_key = ?",
+      ).bind(payload.weight, payload.measuredAt, payload.id, ownerKey).run();
+    } else if (payload.action === "deleteWeight") {
+      if (!payload.id) {
+        return Response.json({ error: "No s’ha trobat el registre de pes." }, { status: 400 });
+      }
+      await env.DB.prepare(
+        "DELETE FROM weights WHERE id = ? AND owner_key = ?",
+      ).bind(payload.id, ownerKey).run();
     } else if (payload.action === "saveActivityType") {
       const name = payload.name?.trim();
       if (!name || name.length > 36) {
