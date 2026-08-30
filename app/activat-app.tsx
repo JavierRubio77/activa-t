@@ -188,6 +188,7 @@ export function ActivatApp() {
   });
   const [selectedDate, setSelectedDate] = useState(today);
   const [activityOpen, setActivityOpen] = useState(false);
+  const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
   const [activityType, setActivityType] = useState("Spinning");
   const [activityTime, setActivityTime] = useState("");
   const [alreadyDone, setAlreadyDone] = useState(false);
@@ -352,14 +353,16 @@ export function ActivatApp() {
       return;
     }
     const saved = await postData({
-      action: "addActivity",
+      action: editingScheduleId ? "editActivity" : "addActivity",
+      id: editingScheduleId,
       type: activityType,
       activityDate: selectedDate,
       startTime: activityTime || null,
-      status: alreadyDone ? "completed" : "scheduled",
+      status: editingScheduleId ? "scheduled" : alreadyDone ? "completed" : "scheduled",
     });
     if (saved) {
       setActivityOpen(false);
+      setEditingScheduleId(null);
       setActivityTime("");
       setAlreadyDone(false);
     }
@@ -442,11 +445,26 @@ export function ActivatApp() {
   }
 
   function openActivityFor(date: string) {
+    setEditingScheduleId(null);
     setSelectedDate(date);
+    setActivityTime("");
+    setAlreadyDone(false);
     if (!activityTypes.some((item) => item.name === activityType)) {
       setActivityType(activityTypes[0]?.name ?? "");
     }
     const parsed = parseIso(date);
+    setCalendarMonth(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
+    setActivityOpen(true);
+  }
+
+  function openScheduleEditor(activity: ActivityRecord) {
+    if (activity.status !== "scheduled") return;
+    setEditingScheduleId(activity.id);
+    setSelectedDate(activity.activityDate);
+    setActivityType(activity.type);
+    setActivityTime(activity.startTime ?? "");
+    setAlreadyDone(false);
+    const parsed = parseIso(activity.activityDate);
     setCalendarMonth(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
     setActivityOpen(true);
   }
@@ -551,6 +569,7 @@ export function ActivatApp() {
                   disabled={busy}
                   onDelete={() => setPendingAction({ kind: "delete", activity: nextActivity })}
                   onSecondary={() => setPendingAction({ kind: "cancel", activity: nextActivity })}
+                  onOpen={() => openScheduleEditor(nextActivity)}
                 >
                   <section
                     className="hero-card"
@@ -707,7 +726,7 @@ export function ActivatApp() {
                 <p className="card-kicker">DIA SELECCIONAT</p>
                 <h3>{longDate(selectedDate)}</h3>
               </div>
-              <Button size="lg" onClick={() => setActivityOpen(true)}><Plus /> Afegir</Button>
+              <Button size="lg" onClick={() => openActivityFor(selectedDate)}><Plus /> Afegir</Button>
             </section>
 
             <div className="day-agenda">
@@ -723,6 +742,7 @@ export function ActivatApp() {
                         disabled={busy}
                         onDelete={() => setPendingAction({ kind: "delete", activity: item })}
                         onSecondary={() => setPendingAction({ kind: "cancel", activity: item })}
+                        onOpen={() => openScheduleEditor(item)}
                       >
                         <ActivityRow item={item} definition={definitionFor(item.type, activityTypes)} />
                       </SwipeableShell>
@@ -948,11 +968,21 @@ export function ActivatApp() {
         <TabsTrigger value="weight"><Scale /><span>Pes</span></TabsTrigger>
       </TabsList>
 
-      <Dialog open={activityOpen} onOpenChange={setActivityOpen}>
+      <Dialog
+        open={activityOpen}
+        onOpenChange={(open) => {
+          setActivityOpen(open);
+          if (!open) setEditingScheduleId(null);
+        }}
+      >
         <DialogContent className="form-dialog activity-dialog">
           <DialogHeader className="activity-dialog-header">
-            <DialogTitle>Afegir activitat</DialogTitle>
-            <DialogDescription>Programa-la o registra-la directament com a feta.</DialogDescription>
+            <DialogTitle>{editingScheduleId ? "Editar activitat programada" : "Afegir activitat"}</DialogTitle>
+            <DialogDescription>
+              {editingScheduleId
+                ? "Modifica l’activitat o la seva hora d’inici."
+                : "Programa-la o registra-la directament com a feta."}
+            </DialogDescription>
           </DialogHeader>
           <div className="dialog-scroll-body">
             <div className="form-stack">
@@ -988,16 +1018,25 @@ export function ActivatApp() {
                   )}
                 </div>
               </div>
-              <label className="check-card">
-                <Checkbox checked={alreadyDone} onCheckedChange={(checked) => setAlreadyDone(checked === true)} />
-                <span><strong>Ja l’he feta</strong><small>S’afegirà a l’historial i no sortirà a Avui.</small></span>
-              </label>
+              {!editingScheduleId && (
+                <label className="check-card">
+                  <Checkbox checked={alreadyDone} onCheckedChange={(checked) => setAlreadyDone(checked === true)} />
+                  <span><strong>Ja l’he feta</strong><small>S’afegirà a l’historial i no sortirà a Avui.</small></span>
+                </label>
+              )}
             </div>
           </div>
           <DialogFooter className="activity-dialog-footer">
-            <Button variant="outline" size="lg" onClick={() => setActivityOpen(false)}>Cancel·lar</Button>
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => {
+                setActivityOpen(false);
+                setEditingScheduleId(null);
+              }}
+            >Cancel·lar</Button>
             <Button size="lg" disabled={busy || !activityType || !activityTypes.length} onClick={() => void addActivity()}>
-              {busy ? "Desant…" : "Desar activitat"}
+              {busy ? "Desant…" : editingScheduleId ? "Desar canvis" : "Desar activitat"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1195,6 +1234,7 @@ function SwipeableShell({
   children,
   onDelete,
   onSecondary,
+  onOpen,
   secondaryLabel = "Cancel·lar",
   disabled = false,
   className = "",
@@ -1202,23 +1242,27 @@ function SwipeableShell({
   children: ReactNode;
   onDelete: () => void;
   onSecondary: () => void;
+  onOpen?: () => void;
   secondaryLabel?: string;
   disabled?: boolean;
   className?: string;
 }) {
   const startX = useRef<number | null>(null);
   const offsetRef = useRef(0);
+  const draggedRef = useRef(false);
   const [offset, setOffset] = useState(0);
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (disabled) return;
     startX.current = event.clientX;
+    draggedRef.current = false;
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
     if (startX.current === null || disabled) return;
     const distance = Math.max(-110, Math.min(110, event.clientX - startX.current));
+    if (Math.abs(distance) > 6) draggedRef.current = true;
     offsetRef.current = distance;
     setOffset(distance);
   }
@@ -1253,7 +1297,7 @@ function SwipeableShell({
       <button type="button" className="swipe-action delete" onClick={onDelete}>Esborrar</button>
       <button type="button" className="swipe-action cancel" onClick={onSecondary}>{secondaryLabel}</button>
       <div
-        className="swipe-content"
+        className={`swipe-content ${onOpen ? "is-editable" : ""}`}
         style={{ transform: `translateX(${offset}px)` }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -1261,7 +1305,17 @@ function SwipeableShell({
         onPointerCancel={() => {
           startX.current = null;
           offsetRef.current = 0;
+          draggedRef.current = false;
           setOffset(0);
+        }}
+        onClick={(event) => {
+          if (!onOpen) return;
+          if (draggedRef.current) {
+            draggedRef.current = false;
+            return;
+          }
+          if ((event.target as HTMLElement).closest("button, input, label, a")) return;
+          onOpen();
         }}
       >
         {children}

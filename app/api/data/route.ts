@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 
 type ActivityPayload = {
-  action?: "addActivity" | "updateActivity" | "deleteActivity" | "addWeight" | "saveActivityType" | "deleteActivityType";
+  action?: "addActivity" | "editActivity" | "updateActivity" | "deleteActivity" | "addWeight" | "saveActivityType" | "deleteActivityType";
   id?: number;
   type?: string;
   activityDate?: string;
@@ -78,6 +78,17 @@ export async function POST(request: Request) {
         `INSERT INTO activities (owner_key, type, activity_date, start_time, status)
          VALUES (?, ?, ?, ?, ?)`,
       ).bind(ownerKey, type, activityDate, payload.startTime || null, status).run();
+    } else if (payload.action === "editActivity") {
+      const type = payload.type?.trim();
+      const activityDate = payload.activityDate?.trim();
+      if (!payload.id || !type || !activityDate) {
+        return Response.json({ error: "Falten dades de l’activitat programada." }, { status: 400 });
+      }
+      await env.DB.prepare(
+        `UPDATE activities
+         SET type = ?, activity_date = ?, start_time = ?
+         WHERE id = ? AND owner_key = ? AND status = 'scheduled'`,
+      ).bind(type, activityDate, payload.startTime || null, payload.id, ownerKey).run();
     } else if (payload.action === "updateActivity") {
       if (!payload.id || !["scheduled", "completed", "cancelled"].includes(payload.status ?? "")) {
         return Response.json({ error: "Actualització no vàlida." }, { status: 400 });

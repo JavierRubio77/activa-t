@@ -323,6 +323,7 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 
 .hero-swipe .swipe-content { background: transparent; }
+.swipe-content.is-editable { cursor: pointer; }
 .swipe-action {
   position: absolute;
   z-index: 1;
@@ -617,15 +618,15 @@ button { -webkit-tap-highlight-color: transparent; }
 .form-dialog [data-slot="dialog-title"] { font-size: 1.5rem; letter-spacing: -.03em; }
 .form-dialog [data-slot="dialog-description"] { font-size: .92rem; line-height: 1.5; }
 .form-stack { display: flex; flex-direction: column; gap: 17px; padding: 4px 0; }
-.form-field { display: flex; flex-direction: column; gap: 7px; }
+.form-field { display: flex; min-width: 0; flex-direction: column; gap: 7px; }
 .form-field label span { color: #85938b; font-weight: 500; }
 .form-field input { height: 50px; border-radius: 14px; background: #fafcf9; font-size: 1rem; }
 .selected-date-field { display: flex; align-items: center; gap: 9px; min-height: 50px; padding: 0 13px; border: 1px solid #d4dfd5; border-radius: 14px; background: #f4f8f3; font-weight: 700; text-transform: capitalize; }
 .selected-date-field svg { width: 19px; color: #32765b; }
 .compact-date { min-height: 44px; padding: 8px 12px; }
 .compact-date strong { font-size: .92rem; }
-.time-input-wrap { position: relative; }
-.time-input-wrap input { padding-right: 50px; }
+.time-input-wrap { position: relative; width: 100%; min-width: 0; max-width: 100%; overflow: hidden; }
+.time-input-wrap input { display: block; width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; padding-right: 50px; -webkit-appearance: none; appearance: none; }
 .time-input-wrap button {
   position: absolute;
   top: 50%;
