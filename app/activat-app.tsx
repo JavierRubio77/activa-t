@@ -22,10 +22,8 @@ import {
   HeartPulse,
   PersonStanding,
   Plus,
-  RefreshCcw,
   Scale,
   Sparkles,
-  Trash2,
   Waves,
   Zap,
   X,
@@ -99,7 +97,7 @@ type ActivityTypeDef = {
 
 type Period = "all" | "month" | "year";
 type View = "today" | "calendar" | "activity" | "weight";
-type PendingAction = { kind: "delete" | "cancel"; activity: ActivityRecord } | null;
+type PendingAction = { kind: "delete" | "cancel" | "reactivate"; activity: ActivityRecord } | null;
 
 const defaultActivityTypes: ActivityTypeDef[] = [
   { name: "Spinning", iconKey: "bike", color: "#17a673" },
@@ -357,7 +355,7 @@ export function ActivatApp() {
     }
   }
 
-  async function updateActivity(id: number, status: "completed" | "cancelled") {
+  async function updateActivity(id: number, status: "scheduled" | "completed" | "cancelled") {
     await postData({ action: "updateActivity", id, status });
   }
 
@@ -375,8 +373,10 @@ export function ActivatApp() {
     setPendingAction(null);
     if (action.kind === "delete") {
       await deleteActivity(action.activity.id);
-    } else {
+    } else if (action.kind === "cancel") {
       await updateActivity(action.activity.id, "cancelled");
+    } else {
+      await reactivateActivity(action.activity.id);
     }
   }
 
@@ -491,7 +491,7 @@ export function ActivatApp() {
                   className="hero-swipe"
                   disabled={busy}
                   onDelete={() => setPendingAction({ kind: "delete", activity: nextActivity })}
-                  onCancel={() => setPendingAction({ kind: "cancel", activity: nextActivity })}
+                  onSecondary={() => setPendingAction({ kind: "cancel", activity: nextActivity })}
                 >
                   <section
                     className="hero-card"
@@ -658,19 +658,20 @@ export function ActivatApp() {
                         key={item.id}
                         disabled={busy}
                         onDelete={() => setPendingAction({ kind: "delete", activity: item })}
-                        onCancel={() => setPendingAction({ kind: "cancel", activity: item })}
+                        onSecondary={() => setPendingAction({ kind: "cancel", activity: item })}
                       >
                         <ActivityRow item={item} definition={definitionFor(item.type, activityTypes)} />
                       </SwipeableShell>
                     ) : item.status === "cancelled" ? (
-                      <CancelledActivityRow
+                      <SwipeableShell
                         key={item.id}
-                        item={item}
-                        definition={definitionFor(item.type, activityTypes)}
                         disabled={busy}
-                        onReactivate={() => void reactivateActivity(item.id)}
                         onDelete={() => setPendingAction({ kind: "delete", activity: item })}
-                      />
+                        onSecondary={() => setPendingAction({ kind: "reactivate", activity: item })}
+                        secondaryLabel="Activar"
+                      >
+                        <ActivityRow item={item} definition={definitionFor(item.type, activityTypes)} />
+                      </SwipeableShell>
                     ) : (
                       <ActivityRow key={item.id} item={item} definition={definitionFor(item.type, activityTypes)} />
                     ),
@@ -770,14 +771,15 @@ export function ActivatApp() {
                 {activityHistory.length ? (
                   activityHistory.map((item) =>
                     item.status === "cancelled" ? (
-                      <CancelledActivityRow
+                      <SwipeableShell
                         key={item.id}
-                        item={item}
-                        definition={definitionFor(item.type, activityTypes)}
                         disabled={busy}
-                        onReactivate={() => void reactivateActivity(item.id)}
                         onDelete={() => setPendingAction({ kind: "delete", activity: item })}
-                      />
+                        onSecondary={() => setPendingAction({ kind: "reactivate", activity: item })}
+                        secondaryLabel="Activar"
+                      >
+                        <ActivityRow item={item} definition={definitionFor(item.type, activityTypes)} />
+                      </SwipeableShell>
                     ) : (
                       <ActivityRow key={item.id} item={item} definition={definitionFor(item.type, activityTypes)} />
                     ),
@@ -1030,12 +1032,18 @@ export function ActivatApp() {
         <AlertDialogContent className="confirm-dialog">
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {pendingAction?.kind === "delete" ? "Esborrar l’activitat?" : "Anul·lar l’activitat?"}
+              {pendingAction?.kind === "delete"
+                ? "Esborrar l’activitat?"
+                : pendingAction?.kind === "reactivate"
+                  ? "Tornar a activar l’activitat?"
+                  : "Cancel·lar l’activitat?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingAction?.kind === "delete"
                 ? `S’eliminarà ${pendingAction.activity.type} del ${shortDate(pendingAction.activity.activityDate)}. Aquesta acció no es pot desfer.`
-                : "Quedarà registrada com a anul·lada i la podràs tornar a activar més endavant."}
+                : pendingAction?.kind === "reactivate"
+                  ? "Tornarà a quedar pendent i apareixerà de nou entre les activitats programades."
+                  : "Quedarà registrada com a cancel·lada i la podràs tornar a activar més endavant."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1044,7 +1052,11 @@ export function ActivatApp() {
               variant={pendingAction?.kind === "delete" ? "destructive" : "default"}
               onClick={() => void confirmPendingAction()}
             >
-              {pendingAction?.kind === "delete" ? "Sí, esborrar" : "Sí, anul·lar"}
+              {pendingAction?.kind === "delete"
+                ? "Sí, esborrar"
+                : pendingAction?.kind === "reactivate"
+                  ? "Sí, activar"
+                  : "Sí, cancel·lar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1099,13 +1111,15 @@ function PeriodPicker({
 function SwipeableShell({
   children,
   onDelete,
-  onCancel,
+  onSecondary,
+  secondaryLabel = "Cancel·lar",
   disabled = false,
   className = "",
 }: {
   children: ReactNode;
   onDelete: () => void;
-  onCancel: () => void;
+  onSecondary: () => void;
+  secondaryLabel?: string;
   disabled?: boolean;
   className?: string;
 }) {
@@ -1143,7 +1157,7 @@ function SwipeableShell({
       window.setTimeout(() => {
         offsetRef.current = 0;
         setOffset(0);
-        onCancel();
+        onSecondary();
       }, 120);
     } else {
       offsetRef.current = 0;
@@ -1154,7 +1168,7 @@ function SwipeableShell({
   return (
     <div className={`swipe-shell ${className}`}>
       <button type="button" className="swipe-action delete" onClick={onDelete}>Esborrar</button>
-      <button type="button" className="swipe-action cancel" onClick={onCancel}>Anul·lar</button>
+      <button type="button" className="swipe-action cancel" onClick={onSecondary}>{secondaryLabel}</button>
       <div
         className="swipe-content"
         style={{ transform: `translateX(${offset}px)` }}
@@ -1188,34 +1202,6 @@ function ActivityRow({ item, definition }: { item: ActivityRecord; definition?: 
         {item.status === "scheduled" && "Pendent"}
       </span>
     </article>
-  );
-}
-
-function CancelledActivityRow({
-  item,
-  definition,
-  disabled,
-  onReactivate,
-  onDelete,
-}: {
-  item: ActivityRecord;
-  definition: ActivityTypeDef;
-  disabled: boolean;
-  onReactivate: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div className="cancelled-activity-card">
-      <ActivityRow item={item} definition={definition} />
-      <div className="cancelled-actions">
-        <Button variant="secondary" size="sm" disabled={disabled} onClick={onReactivate}>
-          <RefreshCcw /> Tornar a activar
-        </Button>
-        <Button variant="ghost" size="sm" disabled={disabled} onClick={onDelete}>
-          <Trash2 /> Esborrar
-        </Button>
-      </div>
-    </div>
   );
 }
 

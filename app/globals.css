@@ -388,23 +388,6 @@ button { -webkit-tap-highlight-color: transparent; }
 .status-badge.cancelled { background: #f0ece8; color: #826b5c; }
 .status-badge.scheduled { background: #fff3d5; color: #8a6715; }
 
-.cancelled-activity-card {
-  overflow: hidden;
-  border: 1px solid #e2e6e1;
-  border-radius: 19px;
-  background: white;
-}
-
-.cancelled-activity-card .activity-row { border: 0; border-radius: 0; }
-.cancelled-actions {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 7px;
-  padding: 0 11px 11px;
-}
-
-.cancelled-actions button { min-height: 38px; border-radius: 11px; font-size: .78rem; }
-
 .activity-catalog {
   overflow: hidden;
   padding: 19px;
