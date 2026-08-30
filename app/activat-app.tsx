@@ -180,6 +180,7 @@ export function ActivatApp() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
+  const [carouselIndex, setCarouselIndex] = useState(0);
 
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
@@ -194,6 +195,7 @@ export function ActivatApp() {
   const [newActivityName, setNewActivityName] = useState("");
   const [newActivityIcon, setNewActivityIcon] = useState("sparkles");
   const [newActivityColor, setNewActivityColor] = useState("#17a673");
+  const [editingActivityName, setEditingActivityName] = useState<string | null>(null);
 
   const [activityFilter, setActivityFilter] = useState("Totes");
   const [activityPeriod, setActivityPeriod] = useState<Period>("all");
@@ -252,16 +254,24 @@ export function ActivatApp() {
     }
   }
 
+  const upcomingDayActivities = useMemo(() => {
+    const upcoming = [...activities]
+      .filter((item) => item.status === "scheduled" && item.activityDate >= today)
+      .sort((a, b) =>
+        `${a.activityDate} ${a.startTime ?? "23:59"} ${String(a.id).padStart(10, "0")}`.localeCompare(
+          `${b.activityDate} ${b.startTime ?? "23:59"} ${String(b.id).padStart(10, "0")}`,
+        ),
+      );
+    const firstDate = upcoming[0]?.activityDate;
+    return firstDate ? upcoming.filter((item) => item.activityDate === firstDate) : [];
+  }, [activities, today]);
+
+  const upcomingCarouselKey = upcomingDayActivities.map((item) => item.id).join("-");
+  useEffect(() => setCarouselIndex(0), [upcomingCarouselKey]);
+
   const nextActivity = useMemo(
-    () =>
-      [...activities]
-        .filter((item) => item.status === "scheduled" && item.activityDate >= today)
-        .sort((a, b) =>
-          `${a.activityDate} ${a.startTime ?? "23:59"}`.localeCompare(
-            `${b.activityDate} ${b.startTime ?? "23:59"}`,
-          ),
-        )[0],
-    [activities, today],
+    () => upcomingDayActivities[Math.min(carouselIndex, Math.max(upcomingDayActivities.length - 1, 0))],
+    [upcomingDayActivities, carouselIndex],
   );
 
   const activityTypes = useMemo(() => {
@@ -386,9 +396,14 @@ export function ActivatApp() {
       setError("Escriu el nom de la nova activitat.");
       return;
     }
+    if (name !== editingActivityName && activityTypes.some((item) => item.name === name)) {
+      setError("Ja tens una activitat amb aquest nom.");
+      return;
+    }
     const saved = await postData({
       action: "saveActivityType",
       name,
+      originalName: editingActivityName,
       iconKey: newActivityIcon,
       color: newActivityColor,
     });
@@ -396,6 +411,7 @@ export function ActivatApp() {
       setActivityType(name);
       setNewActivityOpen(false);
       setNewActivityName("");
+      setEditingActivityName(null);
     }
   }
 
@@ -433,6 +449,22 @@ export function ActivatApp() {
     const parsed = parseIso(date);
     setCalendarMonth(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
     setActivityOpen(true);
+  }
+
+  function openNewActivityType() {
+    setEditingActivityName(null);
+    setNewActivityName("");
+    setNewActivityIcon("sparkles");
+    setNewActivityColor("#17a673");
+    setNewActivityOpen(true);
+  }
+
+  function openActivityTypeEditor(definition: ActivityTypeDef) {
+    setEditingActivityName(definition.name);
+    setNewActivityName(definition.name);
+    setNewActivityIcon(definition.iconKey);
+    setNewActivityColor(definition.color);
+    setNewActivityOpen(true);
   }
 
   function moveAnchor(
@@ -486,7 +518,34 @@ export function ActivatApp() {
               <div className="month-score"><b>{completedThisMonth}</b><small>aquest mes</small></div>
             </section>
             {nextActivity ? (
-              <>
+              <section className="upcoming-carousel">
+                {upcomingDayActivities.length > 1 && (
+                  <div className="activity-carousel-toolbar" aria-label="Activitats del mateix dia">
+                    <div>
+                      <span>{upcomingDayActivities.length} activitats</span>
+                      <strong>{longDate(nextActivity.activityDate)}</strong>
+                    </div>
+                    <div className="activity-carousel-controls">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Activitat anterior"
+                        disabled={carouselIndex === 0}
+                        onClick={() => setCarouselIndex((index) => Math.max(0, index - 1))}
+                      ><ChevronLeft /></Button>
+                      <span>{carouselIndex + 1} / {upcomingDayActivities.length}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Activitat següent"
+                        disabled={carouselIndex === upcomingDayActivities.length - 1}
+                        onClick={() => setCarouselIndex((index) => Math.min(upcomingDayActivities.length - 1, index + 1))}
+                      ><ChevronRight /></Button>
+                    </div>
+                  </div>
+                )}
                 <SwipeableShell
                   className="hero-swipe"
                   disabled={busy}
@@ -523,20 +582,25 @@ export function ActivatApp() {
                       >
                         <Check /> Marcar com a feta
                       </Button>
-                      <Button
-                        size="lg"
-                        variant="outline"
-                        className="cancel-button"
-                        disabled={busy}
-                        onClick={() => void updateActivity(nextActivity.id, "cancelled")}
-                      >
-                        M’he hagut d’esborrar
-                      </Button>
                     </div>
                   </section>
                 </SwipeableShell>
+                {upcomingDayActivities.length > 1 && (
+                  <div className="activity-carousel-dots" aria-label="Selecciona una activitat">
+                    {upcomingDayActivities.map((item, index) => (
+                      <button
+                        type="button"
+                        key={item.id}
+                        className={index === carouselIndex ? "active" : ""}
+                        aria-label={`Veure ${item.type}${item.startTime ? ` a les ${item.startTime}` : ""}`}
+                        aria-current={index === carouselIndex ? "true" : undefined}
+                        onClick={() => setCarouselIndex(index)}
+                      />
+                    ))}
+                  </div>
+                )}
                 <p className="swipe-help"><span>→ Esborrar</span><span>← Cancel·lar</span></p>
-              </>
+              </section>
             ) : (
               <section className="hero-card hero-empty-card">
                 <div className="hero-orb"><Activity /></div>
@@ -673,7 +737,15 @@ export function ActivatApp() {
                         <ActivityRow item={item} definition={definitionFor(item.type, activityTypes)} />
                       </SwipeableShell>
                     ) : (
-                      <ActivityRow key={item.id} item={item} definition={definitionFor(item.type, activityTypes)} />
+                      <SwipeableShell
+                        key={item.id}
+                        disabled={busy}
+                        onDelete={() => setPendingAction({ kind: "delete", activity: item })}
+                        onSecondary={() => setPendingAction({ kind: "reactivate", activity: item })}
+                        secondaryLabel="Fer pendent"
+                      >
+                        <ActivityRow item={item} definition={definitionFor(item.type, activityTypes)} />
+                      </SwipeableShell>
                     ),
                   )
               )}
@@ -687,7 +759,7 @@ export function ActivatApp() {
             <section className="activity-catalog">
               <div className="section-heading catalog-heading">
                 <div><p className="card-kicker">LES TEVES ACTIVITATS</p><h2>Què et ve de gust fer?</h2></div>
-                <Button variant="outline" onClick={() => setNewActivityOpen(true)}><Plus /> Nova</Button>
+                <Button variant="outline" onClick={openNewActivityType}><Plus /> Nova</Button>
               </div>
               <div className="activity-type-grid">
                 {activityTypes.map((definition) => (
@@ -699,10 +771,7 @@ export function ActivatApp() {
                     <button
                       type="button"
                       className="type-card-main"
-                      onClick={() => {
-                        setActivityType(definition.name);
-                        openActivityFor(today);
-                      }}
+                      onClick={() => openActivityTypeEditor(definition)}
                     >
                       <span className="activity-type-icon"><ActivityGlyph type={definition.name} iconKey={definition.iconKey} /></span>
                       <strong>{definition.name}</strong>
@@ -934,11 +1003,21 @@ export function ActivatApp() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={newActivityOpen} onOpenChange={setNewActivityOpen}>
+      <Dialog
+        open={newActivityOpen}
+        onOpenChange={(open) => {
+          setNewActivityOpen(open);
+          if (!open) setEditingActivityName(null);
+        }}
+      >
         <DialogContent className="form-dialog new-type-dialog">
           <DialogHeader>
-            <DialogTitle>Nova activitat</DialogTitle>
-            <DialogDescription>Posa-li un nom i tria el dibuix i el color que la representaran.</DialogDescription>
+            <DialogTitle>{editingActivityName ? "Editar activitat" : "Nova activitat"}</DialogTitle>
+            <DialogDescription>
+              {editingActivityName
+                ? "Canvia el nom, el dibuix o el color que la representen."
+                : "Posa-li un nom i tria el dibuix i el color que la representaran."}
+            </DialogDescription>
           </DialogHeader>
           <div className="form-stack">
             <div className="form-field">
@@ -988,7 +1067,7 @@ export function ActivatApp() {
           <DialogFooter>
             <Button variant="outline" size="lg" onClick={() => setNewActivityOpen(false)}>Cancel·lar</Button>
             <Button size="lg" disabled={busy || !newActivityName.trim()} onClick={() => void saveActivityType()}>
-              {busy ? "Desant…" : "Crear activitat"}
+              {busy ? "Desant…" : editingActivityName ? "Desar canvis" : "Crear activitat"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1035,14 +1114,18 @@ export function ActivatApp() {
               {pendingAction?.kind === "delete"
                 ? "Esborrar l’activitat?"
                 : pendingAction?.kind === "reactivate"
-                  ? "Tornar a activar l’activitat?"
+                  ? pendingAction.activity.status === "completed"
+                    ? "Tornar a posar l’activitat pendent?"
+                    : "Tornar a activar l’activitat?"
                   : "Cancel·lar l’activitat?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingAction?.kind === "delete"
                 ? `S’eliminarà ${pendingAction.activity.type} del ${shortDate(pendingAction.activity.activityDate)}. Aquesta acció no es pot desfer.`
                 : pendingAction?.kind === "reactivate"
-                  ? "Tornarà a quedar pendent i apareixerà de nou entre les activitats programades."
+                  ? pendingAction.activity.status === "completed"
+                    ? "Deixarà de constar com a feta i tornarà a aparèixer entre les activitats programades."
+                    : "Tornarà a quedar pendent i apareixerà de nou entre les activitats programades."
                   : "Quedarà registrada com a cancel·lada i la podràs tornar a activar més endavant."}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1055,7 +1138,7 @@ export function ActivatApp() {
               {pendingAction?.kind === "delete"
                 ? "Sí, esborrar"
                 : pendingAction?.kind === "reactivate"
-                  ? "Sí, activar"
+                  ? pendingAction.activity.status === "completed" ? "Sí, fer pendent" : "Sí, activar"
                   : "Sí, cancel·lar"}
             </AlertDialogAction>
           </AlertDialogFooter>

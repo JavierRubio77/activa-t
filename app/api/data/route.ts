@@ -10,6 +10,7 @@ type ActivityPayload = {
   weight?: number;
   measuredAt?: string;
   name?: string;
+  originalName?: string | null;
   iconKey?: string;
   color?: string;
 };
@@ -89,7 +90,7 @@ export async function POST(request: Request) {
         return Response.json({ error: "No s’ha trobat l’activitat." }, { status: 400 });
       }
       await env.DB.prepare(
-        "DELETE FROM activities WHERE id = ? AND owner_key = ? AND status IN ('scheduled', 'cancelled')",
+        "DELETE FROM activities WHERE id = ? AND owner_key = ?",
       ).bind(payload.id, ownerKey).run();
     } else if (payload.action === "addWeight") {
       if (!payload.measuredAt || !payload.weight || payload.weight < 20 || payload.weight > 300) {
@@ -103,12 +104,32 @@ export async function POST(request: Request) {
       if (!name || name.length > 36) {
         return Response.json({ error: "Escriu un nom d’activitat vàlid." }, { status: 400 });
       }
-      await env.DB.prepare(
+      const originalName = payload.originalName?.trim();
+      const iconKey = payload.iconKey || "sparkles";
+      const color = payload.color || "#65a84f";
+      const saveType = env.DB.prepare(
         `INSERT INTO activity_types (owner_key, name, icon_key, color, hidden)
          VALUES (?, ?, ?, ?, 0)
          ON CONFLICT(owner_key, name)
          DO UPDATE SET icon_key = excluded.icon_key, color = excluded.color, hidden = 0`,
-      ).bind(ownerKey, name, payload.iconKey || "sparkles", payload.color || "#65a84f").run();
+      ).bind(ownerKey, name, iconKey, color);
+
+      if (originalName && originalName !== name) {
+        await env.DB.batch([
+          saveType,
+          env.DB.prepare(
+            `INSERT INTO activity_types (owner_key, name, icon_key, color, hidden)
+             VALUES (?, ?, ?, ?, 1)
+             ON CONFLICT(owner_key, name)
+             DO UPDATE SET hidden = 1`,
+          ).bind(ownerKey, originalName, iconKey, color),
+          env.DB.prepare(
+            "UPDATE activities SET type = ? WHERE owner_key = ? AND type = ?",
+          ).bind(name, ownerKey, originalName),
+        ]);
+      } else {
+        await saveType.run();
+      }
     } else if (payload.action === "deleteActivityType") {
       const name = payload.name?.trim();
       if (!name) {
