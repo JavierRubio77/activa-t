@@ -78,7 +78,7 @@ export async function POST(request: Request) {
          VALUES (?, ?, ?, ?, ?)`,
       ).bind(ownerKey, type, activityDate, payload.startTime || null, status).run();
     } else if (payload.action === "updateActivity") {
-      if (!payload.id || !["completed", "cancelled"].includes(payload.status ?? "scheduled")) {
+      if (!payload.id || !["scheduled", "completed", "cancelled"].includes(payload.status ?? "")) {
         return Response.json({ error: "Actualització no vàlida." }, { status: 400 });
       }
       await env.DB.prepare(
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
         return Response.json({ error: "No s’ha trobat l’activitat." }, { status: 400 });
       }
       await env.DB.prepare(
-        "DELETE FROM activities WHERE id = ? AND owner_key = ? AND status = 'scheduled'",
+        "DELETE FROM activities WHERE id = ? AND owner_key = ? AND status IN ('scheduled', 'cancelled')",
       ).bind(payload.id, ownerKey).run();
     } else if (payload.action === "addWeight") {
       if (!payload.measuredAt || !payload.weight || payload.weight < 20 || payload.weight > 300) {

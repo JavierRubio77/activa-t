@@ -22,6 +22,7 @@ import {
   HeartPulse,
   PersonStanding,
   Plus,
+  RefreshCcw,
   Scale,
   Sparkles,
   Trash2,
@@ -42,6 +43,16 @@ import {
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Dialog,
   DialogContent,
@@ -88,6 +99,7 @@ type ActivityTypeDef = {
 
 type Period = "all" | "month" | "year";
 type View = "today" | "calendar" | "activity" | "weight";
+type PendingAction = { kind: "delete" | "cancel"; activity: ActivityRecord } | null;
 
 const defaultActivityTypes: ActivityTypeDef[] = [
   { name: "Spinning", iconKey: "bike", color: "#17a673" },
@@ -169,6 +181,7 @@ export function ActivatApp() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
 
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
@@ -348,8 +361,23 @@ export function ActivatApp() {
     await postData({ action: "updateActivity", id, status });
   }
 
+  async function reactivateActivity(id: number) {
+    await postData({ action: "updateActivity", id, status: "scheduled" });
+  }
+
   async function deleteActivity(id: number) {
     await postData({ action: "deleteActivity", id });
+  }
+
+  async function confirmPendingAction() {
+    if (!pendingAction) return;
+    const action = pendingAction;
+    setPendingAction(null);
+    if (action.kind === "delete") {
+      await deleteActivity(action.activity.id);
+    } else {
+      await updateActivity(action.activity.id, "cancelled");
+    }
   }
 
   async function saveActivityType() {
@@ -462,10 +490,15 @@ export function ActivatApp() {
                 <SwipeableShell
                   className="hero-swipe"
                   disabled={busy}
-                  onDelete={() => void deleteActivity(nextActivity.id)}
-                  onCancel={() => void updateActivity(nextActivity.id, "cancelled")}
+                  onDelete={() => setPendingAction({ kind: "delete", activity: nextActivity })}
+                  onCancel={() => setPendingAction({ kind: "cancel", activity: nextActivity })}
                 >
-                  <section className="hero-card">
+                  <section
+                    className="hero-card"
+                    style={{
+                      "--activity-color": definitionFor(nextActivity.type, activityTypes).color,
+                    } as CSSProperties}
+                  >
                     <div
                       className="hero-orb"
                       style={{ color: definitionFor(nextActivity.type, activityTypes).color }}
@@ -624,11 +657,20 @@ export function ActivatApp() {
                       <SwipeableShell
                         key={item.id}
                         disabled={busy}
-                        onDelete={() => void deleteActivity(item.id)}
-                        onCancel={() => void updateActivity(item.id, "cancelled")}
+                        onDelete={() => setPendingAction({ kind: "delete", activity: item })}
+                        onCancel={() => setPendingAction({ kind: "cancel", activity: item })}
                       >
                         <ActivityRow item={item} definition={definitionFor(item.type, activityTypes)} />
                       </SwipeableShell>
+                    ) : item.status === "cancelled" ? (
+                      <CancelledActivityRow
+                        key={item.id}
+                        item={item}
+                        definition={definitionFor(item.type, activityTypes)}
+                        disabled={busy}
+                        onReactivate={() => void reactivateActivity(item.id)}
+                        onDelete={() => setPendingAction({ kind: "delete", activity: item })}
+                      />
                     ) : (
                       <ActivityRow key={item.id} item={item} definition={definitionFor(item.type, activityTypes)} />
                     ),
@@ -672,10 +714,6 @@ export function ActivatApp() {
                     ><X /></button>
                   </div>
                 ))}
-                <button type="button" className="activity-type-card add-type-card" onClick={() => setNewActivityOpen(true)}>
-                  <span className="activity-type-icon"><Plus /></span>
-                  <strong>Afegir-ne una</strong>
-                </button>
               </div>
             </section>
 
@@ -730,9 +768,20 @@ export function ActivatApp() {
               <div className="section-heading"><div><p className="card-kicker">HISTORIAL</p><h2>Registre d’activitats</h2></div></div>
               <div className="history-list">
                 {activityHistory.length ? (
-                  activityHistory.map((item) => (
-                    <ActivityRow key={item.id} item={item} definition={definitionFor(item.type, activityTypes)} />
-                  ))
+                  activityHistory.map((item) =>
+                    item.status === "cancelled" ? (
+                      <CancelledActivityRow
+                        key={item.id}
+                        item={item}
+                        definition={definitionFor(item.type, activityTypes)}
+                        disabled={busy}
+                        onReactivate={() => void reactivateActivity(item.id)}
+                        onDelete={() => setPendingAction({ kind: "delete", activity: item })}
+                      />
+                    ) : (
+                      <ActivityRow key={item.id} item={item} definition={definitionFor(item.type, activityTypes)} />
+                    ),
+                  )
                 ) : (
                   <EmptyState text="No hi ha cap activitat amb aquests filtres." />
                 )}
@@ -829,47 +878,52 @@ export function ActivatApp() {
       </TabsList>
 
       <Dialog open={activityOpen} onOpenChange={setActivityOpen}>
-        <DialogContent className="form-dialog">
-          <DialogHeader>
+        <DialogContent className="form-dialog activity-dialog">
+          <DialogHeader className="activity-dialog-header">
             <DialogTitle>Afegir activitat</DialogTitle>
             <DialogDescription>Programa-la o registra-la directament com a feta.</DialogDescription>
           </DialogHeader>
-          <div className="form-stack">
-            <div className="form-field">
-              <Label>Dia</Label>
-              <div className="selected-date-field"><CalendarDays /> {longDate(selectedDate)}</div>
-              <p className="field-help">El dia s’escull al calendari de l’app.</p>
-            </div>
-            <div className="form-field">
-              <Label>Activitat</Label>
-              <div className="activity-picker-grid">
-                {activityTypes.map((definition) => (
-                  <button
-                    type="button"
-                    key={definition.name}
-                    className={activityType === definition.name ? "selected" : ""}
-                    style={{ "--activity-color": definition.color } as CSSProperties}
-                    onClick={() => setActivityType(definition.name)}
-                  >
-                    <span><ActivityGlyph type={definition.name} iconKey={definition.iconKey} /></span>
-                    <strong>{definition.name}</strong>
-                  </button>
-                ))}
-                <button type="button" className="new-picker-card" onClick={() => setNewActivityOpen(true)}>
-                  <span><Plus /></span><strong>Nova</strong>
-                </button>
+          <div className="dialog-scroll-body">
+            <div className="form-stack">
+              <div className="selected-date-field compact-date">
+                <CalendarDays />
+                <strong>{longDate(selectedDate)}</strong>
               </div>
+              <div className="form-field">
+                <Label>Activitat</Label>
+                <div className="activity-picker-grid">
+                  {activityTypes.map((definition) => (
+                    <button
+                      type="button"
+                      key={definition.name}
+                      className={activityType === definition.name ? "selected" : ""}
+                      style={{ "--activity-color": definition.color } as CSSProperties}
+                      onClick={() => setActivityType(definition.name)}
+                    >
+                      <span><ActivityGlyph type={definition.name} iconKey={definition.iconKey} /></span>
+                      <strong>{definition.name}</strong>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="form-field">
+                <Label htmlFor="activity-time">Hora d’inici <span>(opcional)</span></Label>
+                <div className="time-input-wrap">
+                  <Input id="activity-time" type="time" value={activityTime} onChange={(event) => setActivityTime(event.target.value)} />
+                  {activityTime && (
+                    <button type="button" onClick={() => setActivityTime("")} aria-label="Esborrar l’hora">
+                      <X />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <label className="check-card">
+                <Checkbox checked={alreadyDone} onCheckedChange={(checked) => setAlreadyDone(checked === true)} />
+                <span><strong>Ja l’he feta</strong><small>S’afegirà a l’historial i no sortirà a Avui.</small></span>
+              </label>
             </div>
-            <div className="form-field">
-              <Label htmlFor="activity-time">Hora d’inici <span>(opcional)</span></Label>
-              <Input id="activity-time" type="time" value={activityTime} onChange={(event) => setActivityTime(event.target.value)} />
-            </div>
-            <label className="check-card">
-              <Checkbox checked={alreadyDone} onCheckedChange={(checked) => setAlreadyDone(checked === true)} />
-              <span><strong>Ja l’he feta</strong><small>S’afegirà a l’historial i no sortirà a Avui.</small></span>
-            </label>
           </div>
-          <DialogFooter>
+          <DialogFooter className="activity-dialog-footer">
             <Button variant="outline" size="lg" onClick={() => setActivityOpen(false)}>Cancel·lar</Button>
             <Button size="lg" disabled={busy || !activityType || !activityTypes.length} onClick={() => void addActivity()}>
               {busy ? "Desant…" : "Desar activitat"}
@@ -971,6 +1025,30 @@ export function ActivatApp() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={pendingAction !== null} onOpenChange={(open) => !open && setPendingAction(null)}>
+        <AlertDialogContent className="confirm-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingAction?.kind === "delete" ? "Esborrar l’activitat?" : "Anul·lar l’activitat?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingAction?.kind === "delete"
+                ? `S’eliminarà ${pendingAction.activity.type} del ${shortDate(pendingAction.activity.activityDate)}. Aquesta acció no es pot desfer.`
+                : "Quedarà registrada com a anul·lada i la podràs tornar a activar més endavant."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Tornar</AlertDialogCancel>
+            <AlertDialogAction
+              variant={pendingAction?.kind === "delete" ? "destructive" : "default"}
+              onClick={() => void confirmPendingAction()}
+            >
+              {pendingAction?.kind === "delete" ? "Sí, esborrar" : "Sí, anul·lar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Tabs>
   );
 }
@@ -1054,11 +1132,19 @@ function SwipeableShell({
     if (offsetRef.current > 72) {
       offsetRef.current = 120;
       setOffset(120);
-      window.setTimeout(onDelete, 120);
+      window.setTimeout(() => {
+        offsetRef.current = 0;
+        setOffset(0);
+        onDelete();
+      }, 120);
     } else if (offsetRef.current < -72) {
       offsetRef.current = -120;
       setOffset(-120);
-      window.setTimeout(onCancel, 120);
+      window.setTimeout(() => {
+        offsetRef.current = 0;
+        setOffset(0);
+        onCancel();
+      }, 120);
     } else {
       offsetRef.current = 0;
       setOffset(0);
@@ -1067,8 +1153,8 @@ function SwipeableShell({
 
   return (
     <div className={`swipe-shell ${className}`}>
-      <button type="button" className="swipe-action delete" onClick={onDelete} aria-label="Esborrar activitat"><Trash2 /></button>
-      <button type="button" className="swipe-action cancel" onClick={onCancel} aria-label="Cancel·lar activitat"><X /></button>
+      <button type="button" className="swipe-action delete" onClick={onDelete}>Esborrar</button>
+      <button type="button" className="swipe-action cancel" onClick={onCancel}>Anul·lar</button>
       <div
         className="swipe-content"
         style={{ transform: `translateX(${offset}px)` }}
@@ -1102,6 +1188,34 @@ function ActivityRow({ item, definition }: { item: ActivityRecord; definition?: 
         {item.status === "scheduled" && "Pendent"}
       </span>
     </article>
+  );
+}
+
+function CancelledActivityRow({
+  item,
+  definition,
+  disabled,
+  onReactivate,
+  onDelete,
+}: {
+  item: ActivityRecord;
+  definition: ActivityTypeDef;
+  disabled: boolean;
+  onReactivate: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="cancelled-activity-card">
+      <ActivityRow item={item} definition={definition} />
+      <div className="cancelled-actions">
+        <Button variant="secondary" size="sm" disabled={disabled} onClick={onReactivate}>
+          <RefreshCcw /> Tornar a activar
+        </Button>
+        <Button variant="ghost" size="sm" disabled={disabled} onClick={onDelete}>
+          <Trash2 /> Esborrar
+        </Button>
+      </div>
+    </div>
   );
 }
 
