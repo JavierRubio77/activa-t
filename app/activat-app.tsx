@@ -1,0 +1,786 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  Activity,
+  CalendarDays,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  CircleGauge,
+  Footprints,
+  Plus,
+  Scale,
+  Sparkles,
+  X,
+} from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+type ActivityRecord = {
+  id: number;
+  type: string;
+  activityDate: string;
+  startTime: string | null;
+  status: "scheduled" | "completed" | "cancelled";
+  createdAt: string;
+};
+
+type WeightRecord = {
+  id: number;
+  weight: number;
+  measuredAt: string;
+  createdAt: string;
+};
+
+type Period = "all" | "month" | "year";
+type View = "today" | "calendar" | "activity" | "weight";
+
+const activityTypes = ["Spinning", "Barre", "Caminar", "El·líptica", "Cinta de córrer", "Altres"];
+const monthNames = [
+  "gener", "febrer", "març", "abril", "maig", "juny",
+  "juliol", "agost", "setembre", "octubre", "novembre", "desembre",
+];
+const weekDays = ["Dl", "Dt", "Dc", "Dj", "Dv", "Ds", "Dg"];
+
+function localIso(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseIso(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function shortDate(value: string) {
+  return new Intl.DateTimeFormat("ca-ES", { day: "numeric", month: "short", year: "numeric" })
+    .format(parseIso(value))
+    .replace(".", "");
+}
+
+function longDate(value: string) {
+  return new Intl.DateTimeFormat("ca-ES", { weekday: "long", day: "numeric", month: "long" })
+    .format(parseIso(value));
+}
+
+function formatWeight(value: number) {
+  return value.toLocaleString("ca-ES", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
+function samePeriod(value: string, period: Period, anchor: Date) {
+  if (period === "all") return true;
+  const date = parseIso(value);
+  if (period === "year") return date.getFullYear() === anchor.getFullYear();
+  return date.getFullYear() === anchor.getFullYear() && date.getMonth() === anchor.getMonth();
+}
+
+function ActivityGlyph({ type }: { type: string }) {
+  if (type === "Caminar" || type === "Cinta de córrer") return <Footprints />;
+  if (type === "El·líptica") return <CircleGauge />;
+  return <Activity />;
+}
+
+function activityTone(type: string) {
+  const tones: Record<string, string> = {
+    Spinning: "#1f7a5c",
+    Barre: "#78a545",
+    Caminar: "#d6a329",
+    "El·líptica": "#4b9481",
+    "Cinta de córrer": "#345f49",
+    Altres: "#83a98c",
+  };
+  return tones[type] ?? tones.Altres;
+}
+
+export function ActivatApp() {
+  const today = localIso();
+  const [view, setView] = useState<View>("today");
+  const [activities, setActivities] = useState<ActivityRecord[]>([]);
+  const [weights, setWeights] = useState<WeightRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [activityType, setActivityType] = useState("Spinning");
+  const [activityTime, setActivityTime] = useState("");
+  const [alreadyDone, setAlreadyDone] = useState(false);
+
+  const [activityFilter, setActivityFilter] = useState("Totes");
+  const [activityPeriod, setActivityPeriod] = useState<Period>("all");
+  const [activityAnchor, setActivityAnchor] = useState(new Date());
+  const [weightPeriod, setWeightPeriod] = useState<Period>("all");
+  const [weightAnchor, setWeightAnchor] = useState(new Date());
+
+  const [weightOpen, setWeightOpen] = useState(false);
+  const [weightValue, setWeightValue] = useState("");
+  const [weightDate, setWeightDate] = useState(today);
+
+  async function loadData() {
+    try {
+      setError("");
+      const response = await fetch("/api/data", { cache: "no-store" });
+      const data = (await response.json()) as {
+        activities?: ActivityRecord[];
+        weights?: WeightRecord[];
+        error?: string;
+      };
+      if (!response.ok) throw new Error(data.error ?? "No s’han pogut carregar les dades.");
+      setActivities(data.activities ?? []);
+      setWeights(data.weights ?? []);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "No s’han pogut carregar les dades.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadData(), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  async function postData(payload: Record<string, unknown>) {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "No s’ha pogut desar.");
+      await loadData();
+      return true;
+    } catch (postError) {
+      setError(postError instanceof Error ? postError.message : "No s’ha pogut desar.");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const nextActivity = useMemo(
+    () =>
+      [...activities]
+        .filter((item) => item.status === "scheduled" && item.activityDate >= today)
+        .sort((a, b) =>
+          `${a.activityDate} ${a.startTime ?? "23:59"}`.localeCompare(
+            `${b.activityDate} ${b.startTime ?? "23:59"}`,
+          ),
+        )[0],
+    [activities, today],
+  );
+
+  const completedThisMonth = useMemo(() => {
+    const now = new Date();
+    return activities.filter(
+      (item) => item.status === "completed" && samePeriod(item.activityDate, "month", now),
+    ).length;
+  }, [activities]);
+
+  const calendarDays = useMemo(() => {
+    const first = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+    const mondayIndex = (first.getDay() + 6) % 7;
+    const start = new Date(first);
+    start.setDate(first.getDate() - mondayIndex);
+    return Array.from({ length: 42 }, (_, index) => {
+      const date = new Date(start);
+      date.setDate(start.getDate() + index);
+      return date;
+    });
+  }, [calendarMonth]);
+
+  const activityHistory = useMemo(
+    () =>
+      activities.filter(
+        (item) =>
+          item.status !== "scheduled" &&
+          (activityFilter === "Totes" || item.type === activityFilter) &&
+          samePeriod(item.activityDate, activityPeriod, activityAnchor),
+      ),
+    [activities, activityFilter, activityPeriod, activityAnchor],
+  );
+
+  const activityChart = useMemo(
+    () =>
+      activityTypes
+        .map((type) => ({
+          name: type === "Cinta de córrer" ? "Cinta" : type,
+          total: activityHistory.filter((item) => item.status === "completed" && item.type === type).length,
+          fill: activityTone(type),
+        }))
+        .filter((item) => item.total > 0),
+    [activityHistory],
+  );
+
+  const filteredWeights = useMemo(
+    () =>
+      weights
+        .filter((item) => samePeriod(item.measuredAt, weightPeriod, weightAnchor))
+        .slice()
+        .reverse(),
+    [weights, weightPeriod, weightAnchor],
+  );
+
+  const latestWeight = weights[0];
+  const previousWeight = weights[1];
+  const weightDifference =
+    latestWeight && previousWeight ? latestWeight.weight - previousWeight.weight : null;
+
+  async function addActivity() {
+    const saved = await postData({
+      action: "addActivity",
+      type: activityType,
+      activityDate: selectedDate,
+      startTime: activityTime || null,
+      status: alreadyDone ? "completed" : "scheduled",
+    });
+    if (saved) {
+      setActivityOpen(false);
+      setActivityTime("");
+      setAlreadyDone(false);
+    }
+  }
+
+  async function updateActivity(id: number, status: "completed" | "cancelled") {
+    await postData({ action: "updateActivity", id, status });
+  }
+
+  async function addWeight() {
+    const value = Number(weightValue.replace(",", "."));
+    const saved = await postData({
+      action: "addWeight",
+      weight: value,
+      measuredAt: weightDate,
+    });
+    if (saved) {
+      setWeightOpen(false);
+      setWeightValue("");
+    }
+  }
+
+  function openActivityFor(date: string) {
+    setSelectedDate(date);
+    const parsed = parseIso(date);
+    setCalendarMonth(new Date(parsed.getFullYear(), parsed.getMonth(), 1));
+    setActivityOpen(true);
+  }
+
+  function moveAnchor(
+    setter: (date: Date) => void,
+    anchor: Date,
+    period: Period,
+    amount: number,
+  ) {
+    const next = new Date(anchor);
+    if (period === "month") next.setMonth(next.getMonth() + amount);
+    if (period === "year") next.setFullYear(next.getFullYear() + amount);
+    setter(next);
+  }
+
+  function periodLabel(period: Period, anchor: Date) {
+    if (period === "all") return "Tot el temps";
+    if (period === "year") return String(anchor.getFullYear());
+    return `${monthNames[anchor.getMonth()]} ${anchor.getFullYear()}`;
+  }
+
+  return (
+    <Tabs value={view} onValueChange={(value) => setView(value as View)} className="app-shell">
+      <header className="topbar">
+        <div>
+          <p className="eyebrow">{view === "today" ? "Bon dia, Anna" : "Activa’t"}</p>
+          <h1>
+            {view === "today" && "Avui"}
+            {view === "calendar" && "Calendari"}
+            {view === "activity" && "La teva activitat"}
+            {view === "weight" && "El teu pes"}
+          </h1>
+        </div>
+        <div className="brand-mark" aria-hidden="true"><Sparkles /></div>
+      </header>
+
+      {error && (
+        <div className="error-banner" role="alert">
+          <span>{error}</span>
+          <button type="button" onClick={() => setError("")} aria-label="Tancar avís"><X /></button>
+        </div>
+      )}
+
+      {loading ? (
+        <main className="content"><div className="loading-card">Carregant les teves dades…</div></main>
+      ) : (
+        <>
+          <TabsContent value="today" className="content page-stack">
+            <section className="hero-card">
+              <div className="hero-orb"><Activity /></div>
+              <p className="card-kicker">PROPERA ACTIVITAT</p>
+              {nextActivity ? (
+                <>
+                  <h2>{nextActivity.type}</h2>
+                  <p className="hero-date">
+                    {longDate(nextActivity.activityDate)}
+                    {nextActivity.startTime ? ` · ${nextActivity.startTime} h` : ""}
+                  </p>
+                  <div className="hero-actions">
+                    <Button
+                      size="lg"
+                      className="complete-button"
+                      disabled={busy}
+                      onClick={() => void updateActivity(nextActivity.id, "completed")}
+                    >
+                      <Check /> Marcar com a feta
+                    </Button>
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="cancel-button"
+                      disabled={busy}
+                      onClick={() => void updateActivity(nextActivity.id, "cancelled")}
+                    >
+                      M’he hagut d’esborrar
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="empty-hero">
+                  <h2>Cap activitat pendent</h2>
+                  <p>Quan en programis una, la trobaràs aquí.</p>
+                  <Button size="lg" onClick={() => openActivityFor(today)}><Plus /> Afegir activitat</Button>
+                </div>
+              )}
+            </section>
+
+            <section className="today-grid">
+              <button type="button" className="metric-card clickable" onClick={() => setView("activity")}>
+                <span className="metric-icon"><Activity /></span>
+                <span className="metric-label">Aquest mes</span>
+                <strong>{completedThisMonth}</strong>
+                <span className="metric-foot">activitats fetes</span>
+              </button>
+              <button type="button" className="metric-card clickable" onClick={() => setView("weight")}>
+                <span className="metric-icon"><Scale /></span>
+                <span className="metric-label">Últim pes</span>
+                <strong>{latestWeight ? formatWeight(latestWeight.weight) : "—"} <small>kg</small></strong>
+                <span className="metric-foot">
+                  {latestWeight ? shortDate(latestWeight.measuredAt) : "Encara sense registres"}
+                </span>
+              </button>
+            </section>
+
+            <Button size="lg" className="wide-add" onClick={() => openActivityFor(today)}>
+              <Plus /> Afegir una activitat
+            </Button>
+          </TabsContent>
+
+          <TabsContent value="calendar" className="content page-stack">
+            <section className="calendar-card">
+              <div className="calendar-header">
+                <Button
+                  variant="ghost"
+                  size="icon-lg"
+                  aria-label="Mes anterior"
+                  onClick={() =>
+                    setCalendarMonth(
+                      new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1),
+                    )
+                  }
+                ><ChevronLeft /></Button>
+                <h2>{monthNames[calendarMonth.getMonth()]} <span>{calendarMonth.getFullYear()}</span></h2>
+                <Button
+                  variant="ghost"
+                  size="icon-lg"
+                  aria-label="Mes següent"
+                  onClick={() =>
+                    setCalendarMonth(
+                      new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1),
+                    )
+                  }
+                ><ChevronRight /></Button>
+              </div>
+              <div className="calendar-grid week-row">
+                {weekDays.map((day) => <span key={day}>{day}</span>)}
+              </div>
+              <div className="calendar-grid days-grid">
+                {calendarDays.map((date) => {
+                  const iso = localIso(date);
+                  const entries = activities.filter((item) => item.activityDate === iso);
+                  const inMonth = date.getMonth() === calendarMonth.getMonth();
+                  return (
+                    <button
+                      type="button"
+                      key={iso}
+                      className={[
+                        "day-cell",
+                        inMonth ? "" : "outside",
+                        iso === today ? "today" : "",
+                        iso === selectedDate ? "selected" : "",
+                      ].join(" ")}
+                      onClick={() => {
+                        setSelectedDate(iso);
+                        if (!inMonth) {
+                          setCalendarMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+                        }
+                      }}
+                      onDoubleClick={() => openActivityFor(iso)}
+                      aria-label={longDate(iso)}
+                    >
+                      <span>{date.getDate()}</span>
+                      <div className="day-dots">
+                        {entries.slice(0, 3).map((entry) => (
+                          <i
+                            key={entry.id}
+                            style={{ background: entry.status === "cancelled" ? "#b8b8b0" : activityTone(entry.type) }}
+                          />
+                        ))}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="selected-day">
+              <div>
+                <p className="card-kicker">DIA SELECCIONAT</p>
+                <h3>{longDate(selectedDate)}</h3>
+              </div>
+              <Button size="lg" onClick={() => setActivityOpen(true)}><Plus /> Afegir</Button>
+            </section>
+
+            <div className="day-agenda">
+              {activities.filter((item) => item.activityDate === selectedDate).length === 0 ? (
+                <p className="empty-copy">No hi ha cap activitat aquest dia.</p>
+              ) : (
+                activities
+                  .filter((item) => item.activityDate === selectedDate)
+                  .map((item) => <ActivityRow key={item.id} item={item} />)
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="activity" className="content page-stack">
+            <section className="filter-panel">
+              <div className="filter-field">
+                <Label>Tipus d’activitat</Label>
+                <Select value={activityFilter} onValueChange={setActivityFilter}>
+                  <SelectTrigger className="large-select"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Totes">Totes les activitats</SelectItem>
+                    {activityTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <PeriodPicker
+                period={activityPeriod}
+                anchor={activityAnchor}
+                label={periodLabel(activityPeriod, activityAnchor)}
+                onPeriod={setActivityPeriod}
+                onMove={(amount) => moveAnchor(setActivityAnchor, activityAnchor, activityPeriod, amount)}
+              />
+            </section>
+
+            <section className="summary-strip">
+              <div><strong>{activityHistory.filter((item) => item.status === "completed").length}</strong><span>fetes</span></div>
+              <div><strong>{activityHistory.filter((item) => item.status === "cancelled").length}</strong><span>cancel·lades</span></div>
+              <div><strong>{new Set(activityHistory.filter((item) => item.status === "completed").map((item) => item.type)).size}</strong><span>tipus</span></div>
+            </section>
+
+            <section className="chart-card">
+              <div className="section-heading">
+                <div><p className="card-kicker">RESUM</p><h2>Activitats fetes</h2></div>
+              </div>
+              {activityChart.length ? (
+                <div className="activity-chart" aria-label="Gràfic d’activitats fetes">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={activityChart} margin={{ top: 12, right: 4, left: -24, bottom: 4 }}>
+                      <CartesianGrid vertical={false} stroke="#dce8df" />
+                      <XAxis dataKey="name" tick={{ fill: "#52665b", fontSize: 12 }} axisLine={false} tickLine={false} />
+                      <YAxis allowDecimals={false} tick={{ fill: "#52665b", fontSize: 12 }} axisLine={false} tickLine={false} />
+                      <Tooltip cursor={{ fill: "#eef5ef" }} />
+                      <Bar dataKey="total" radius={[8, 8, 2, 2]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <EmptyState text="Encara no hi ha activitats fetes en aquest període." />
+              )}
+            </section>
+
+            <section className="history-section">
+              <div className="section-heading"><div><p className="card-kicker">HISTORIAL</p><h2>Registre d’activitats</h2></div></div>
+              <div className="history-list">
+                {activityHistory.length ? (
+                  activityHistory.map((item) => <ActivityRow key={item.id} item={item} />)
+                ) : (
+                  <EmptyState text="No hi ha cap activitat amb aquests filtres." />
+                )}
+              </div>
+            </section>
+          </TabsContent>
+
+          <TabsContent value="weight" className="content page-stack">
+            <section className="weight-hero">
+              <div>
+                <p className="card-kicker">ÚLTIM REGISTRE</p>
+                <h2>{latestWeight ? formatWeight(latestWeight.weight) : "—"} <span>kg</span></h2>
+                <p>{latestWeight ? shortDate(latestWeight.measuredAt) : "Encara no has afegit cap pes"}</p>
+              </div>
+              <div className={`trend-pill ${weightDifference && weightDifference > 0 ? "up" : ""}`}>
+                {weightDifference === null
+                  ? "Sense comparativa"
+                  : `${weightDifference > 0 ? "+" : ""}${formatWeight(weightDifference)} kg`}
+              </div>
+              <Button size="lg" className="weight-add" onClick={() => setWeightOpen(true)}>
+                <Plus /> Registrar pes
+              </Button>
+            </section>
+
+            <section className="filter-panel single">
+              <PeriodPicker
+                period={weightPeriod}
+                anchor={weightAnchor}
+                label={periodLabel(weightPeriod, weightAnchor)}
+                onPeriod={setWeightPeriod}
+                onMove={(amount) => moveAnchor(setWeightAnchor, weightAnchor, weightPeriod, amount)}
+              />
+            </section>
+
+            <section className="chart-card">
+              <div className="section-heading"><div><p className="card-kicker">EVOLUCIÓ</p><h2>Històric del pes</h2></div></div>
+              {filteredWeights.length ? (
+                <div className="weight-chart" aria-label="Gràfic d’evolució del pes">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={filteredWeights} margin={{ top: 14, right: 10, left: -8, bottom: 2 }}>
+                      <CartesianGrid vertical={false} stroke="#dce8df" />
+                      <XAxis
+                        dataKey="measuredAt"
+                        tickFormatter={(value) => {
+                          const date = parseIso(value);
+                          return `${date.getDate()}/${date.getMonth() + 1}`;
+                        }}
+                        tick={{ fill: "#52665b", fontSize: 12 }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis domain={["dataMin - 1", "dataMax + 1"]} tick={{ fill: "#52665b", fontSize: 12 }} axisLine={false} tickLine={false} />
+                      <Tooltip
+                        labelFormatter={(value) => shortDate(String(value))}
+                        formatter={(value) => [`${formatWeight(Number(value))} kg`, "Pes"]}
+                      />
+                      <Line type="monotone" dataKey="weight" stroke="#1f7a5c" strokeWidth={3} dot={{ r: 4, fill: "#f8fbf7", strokeWidth: 3 }} activeDot={{ r: 6 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <EmptyState text="Encara no hi ha registres de pes en aquest període." />
+              )}
+            </section>
+
+            <section className="history-section">
+              <div className="section-heading"><div><p className="card-kicker">REGISTRES</p><h2>Pes per data</h2></div></div>
+              <div className="weight-list">
+                {[...filteredWeights].reverse().map((item, index, list) => {
+                  const previous = list[index + 1];
+                  const diff = previous ? item.weight - previous.weight : null;
+                  return (
+                    <div className="weight-row" key={item.id}>
+                      <span className="weight-row-icon"><Scale /></span>
+                      <div><strong>{formatWeight(item.weight)} kg</strong><span>{shortDate(item.measuredAt)}</span></div>
+                      <em className={diff && diff > 0 ? "up" : ""}>
+                        {diff === null ? "—" : `${diff > 0 ? "+" : ""}${formatWeight(diff)}`}
+                      </em>
+                    </div>
+                  );
+                })}
+                {!filteredWeights.length && <EmptyState text="No hi ha cap pes amb aquest filtre." />}
+              </div>
+            </section>
+          </TabsContent>
+        </>
+      )}
+
+      <TabsList className="bottom-nav" aria-label="Navegació principal">
+        <TabsTrigger value="today"><Sparkles /><span>Avui</span></TabsTrigger>
+        <TabsTrigger value="calendar"><CalendarDays /><span>Calendari</span></TabsTrigger>
+        <TabsTrigger value="activity"><Activity /><span>Activitat</span></TabsTrigger>
+        <TabsTrigger value="weight"><Scale /><span>Pes</span></TabsTrigger>
+      </TabsList>
+
+      <Dialog open={activityOpen} onOpenChange={setActivityOpen}>
+        <DialogContent className="form-dialog">
+          <DialogHeader>
+            <DialogTitle>Afegir activitat</DialogTitle>
+            <DialogDescription>Programa-la o registra-la directament com a feta.</DialogDescription>
+          </DialogHeader>
+          <div className="form-stack">
+            <div className="form-field">
+              <Label>Dia</Label>
+              <div className="selected-date-field"><CalendarDays /> {longDate(selectedDate)}</div>
+              <p className="field-help">El dia s’escull al calendari de l’app.</p>
+            </div>
+            <div className="form-field">
+              <Label>Activitat</Label>
+              <Select value={activityType} onValueChange={setActivityType}>
+                <SelectTrigger className="large-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {activityTypes.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="form-field">
+              <Label htmlFor="activity-time">Hora d’inici <span>(opcional)</span></Label>
+              <Input id="activity-time" type="time" value={activityTime} onChange={(event) => setActivityTime(event.target.value)} />
+            </div>
+            <label className="check-card">
+              <Checkbox checked={alreadyDone} onCheckedChange={(checked) => setAlreadyDone(checked === true)} />
+              <span><strong>Ja l’he feta</strong><small>S’afegirà a l’historial i no sortirà a Avui.</small></span>
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="lg" onClick={() => setActivityOpen(false)}>Cancel·lar</Button>
+            <Button size="lg" disabled={busy} onClick={() => void addActivity()}>
+              {busy ? "Desant…" : "Desar activitat"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={weightOpen} onOpenChange={setWeightOpen}>
+        <DialogContent className="form-dialog">
+          <DialogHeader>
+            <DialogTitle>Registrar el pes</DialogTitle>
+            <DialogDescription>Afegeix una nova mesura al teu històric.</DialogDescription>
+          </DialogHeader>
+          <div className="form-stack">
+            <div className="form-field">
+              <Label htmlFor="weight-value">Pes en kg</Label>
+              <div className="weight-input-wrap">
+                <Input
+                  id="weight-value"
+                  inputMode="decimal"
+                  placeholder="65,0"
+                  value={weightValue}
+                  onChange={(event) => setWeightValue(event.target.value)}
+                />
+                <span>kg</span>
+              </div>
+            </div>
+            <div className="form-field">
+              <Label htmlFor="weight-date">Data</Label>
+              <Input id="weight-date" type="date" value={weightDate} max={today} onChange={(event) => setWeightDate(event.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" size="lg" onClick={() => setWeightOpen(false)}>Cancel·lar</Button>
+            <Button size="lg" disabled={busy || !weightValue} onClick={() => void addWeight()}>
+              {busy ? "Desant…" : "Desar pes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Tabs>
+  );
+}
+
+function PeriodPicker({
+  period,
+  anchor,
+  label,
+  onPeriod,
+  onMove,
+}: {
+  period: Period;
+  anchor: Date;
+  label: string;
+  onPeriod: (period: Period) => void;
+  onMove: (amount: number) => void;
+}) {
+  void anchor;
+  return (
+    <div className="period-picker">
+      <div className="period-options">
+        {([
+          ["all", "Tot"],
+          ["month", "Mes"],
+          ["year", "Any"],
+        ] as const).map(([value, text]) => (
+          <button
+            type="button"
+            key={value}
+            className={period === value ? "active" : ""}
+            onClick={() => onPeriod(value)}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+      {period !== "all" && (
+        <div className="period-nav">
+          <Button variant="ghost" size="icon-sm" aria-label="Període anterior" onClick={() => onMove(-1)}><ChevronLeft /></Button>
+          <strong>{label}</strong>
+          <Button variant="ghost" size="icon-sm" aria-label="Període següent" onClick={() => onMove(1)}><ChevronRight /></Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActivityRow({ item }: { item: ActivityRecord }) {
+  return (
+    <article className="activity-row">
+      <span className="activity-row-icon" style={{ background: `${activityTone(item.type)}1f`, color: activityTone(item.type) }}><ActivityGlyph type={item.type} /></span>
+      <div className="activity-row-main">
+        <strong>{item.type}</strong>
+        <span>{shortDate(item.activityDate)}{item.startTime ? ` · ${item.startTime} h` : ""}</span>
+      </div>
+      <span className={`status-badge ${item.status}`}>
+        {item.status === "completed" && "Feta"}
+        {item.status === "cancelled" && "Cancel·lada"}
+        {item.status === "scheduled" && "Pendent"}
+      </span>
+    </article>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return <div className="empty-state"><span><Activity /></span><p>{text}</p></div>;
+}
