@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   Activity,
+  BarChart3,
   Bike,
   CalendarDays,
   Check,
@@ -20,6 +21,7 @@ import {
   Dumbbell,
   Footprints,
   HeartPulse,
+  History,
   PersonStanding,
   Plus,
   Scale,
@@ -97,6 +99,7 @@ type ActivityTypeDef = {
 
 type Period = "all" | "month" | "year";
 type View = "today" | "calendar" | "activity" | "weight";
+type ActivitySection = "catalog" | "stats" | "history";
 type PendingAction = { kind: "delete" | "cancel" | "reactivate"; activity: ActivityRecord } | null;
 
 const defaultActivityTypes: ActivityTypeDef[] = [
@@ -173,6 +176,7 @@ function definitionFor(type: string, definitions: ActivityTypeDef[]) {
 export function ActivatApp() {
   const today = localIso();
   const [view, setView] = useState<View>("today");
+  const [activitySection, setActivitySection] = useState<ActivitySection>("catalog");
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [weights, setWeights] = useState<WeightRecord[]>([]);
   const [activityTypePrefs, setActivityTypePrefs] = useState<ActivityTypeDef[]>([]);
@@ -197,6 +201,7 @@ export function ActivatApp() {
   const [newActivityIcon, setNewActivityIcon] = useState("sparkles");
   const [newActivityColor, setNewActivityColor] = useState("#17a673");
   const [editingActivityName, setEditingActivityName] = useState<string | null>(null);
+  const [pendingTypeDelete, setPendingTypeDelete] = useState<ActivityTypeDef | null>(null);
 
   const [activityFilter, setActivityFilter] = useState("Totes");
   const [activityPeriod, setActivityPeriod] = useState<Period>("all");
@@ -291,6 +296,22 @@ export function ActivatApp() {
   const activityFilterOptions = useMemo(
     () => Array.from(new Set([...activityTypes.map((item) => item.name), ...activities.map((item) => item.type)])),
     [activityTypes, activities],
+  );
+
+  const activityCompletedCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    activities.forEach((item) => {
+      if (item.status === "completed") counts.set(item.type, (counts.get(item.type) ?? 0) + 1);
+    });
+    return counts;
+  }, [activities]);
+
+  const sortedActivityTypes = useMemo(
+    () => [...activityTypes].sort((a, b) => {
+      const countDifference = (activityCompletedCounts.get(b.name) ?? 0) - (activityCompletedCounts.get(a.name) ?? 0);
+      return countDifference || a.name.localeCompare(b.name, "ca", { sensitivity: "base" });
+    }),
+    [activityTypes, activityCompletedCounts],
   );
 
   const completedThisMonth = useMemo(() => {
@@ -431,6 +452,12 @@ export function ActivatApp() {
       const next = activityTypes.find((item) => item.name !== definition.name);
       setActivityType(next?.name ?? "");
     }
+    if (saved) {
+      if (activityFilter === definition.name) setActivityFilter("Totes");
+      setPendingTypeDelete(null);
+      setNewActivityOpen(false);
+      setEditingActivityName(null);
+    }
   }
 
   async function addWeight() {
@@ -527,14 +554,24 @@ export function ActivatApp() {
   }
 
   return (
-    <Tabs value={view} onValueChange={(value) => setView(value as View)} className="app-shell">
+    <Tabs
+      value={view}
+      onValueChange={(value) => {
+        const nextView = value as View;
+        setView(nextView);
+        if (nextView === "activity") setActivitySection("catalog");
+      }}
+      className="app-shell"
+    >
       <header className="topbar">
         <div>
           <p className="eyebrow">{view === "today" ? "Bon dia, Anna" : "Activa’t"}</p>
           <h1>
             {view === "today" && "Avui"}
             {view === "calendar" && "Calendari"}
-            {view === "activity" && "La teva activitat"}
+            {view === "activity" && activitySection === "catalog" && "La teva activitat"}
+            {view === "activity" && activitySection === "stats" && "Estadístiques"}
+            {view === "activity" && activitySection === "history" && "Historial"}
             {view === "weight" && "El teu pes"}
           </h1>
         </div>
@@ -655,8 +692,12 @@ export function ActivatApp() {
               </section>
             )}
 
+            <Button size="lg" className="wide-add" onClick={() => openActivityFor(today)}>
+              <Plus /> Afegir una activitat
+            </Button>
+
             <section className="today-grid">
-              <button type="button" className="metric-card clickable" onClick={() => setView("activity")}>
+              <button type="button" className="metric-card clickable" onClick={() => { setView("activity"); setActivitySection("stats"); }}>
                 <span className="metric-icon"><Activity /></span>
                 <span className="metric-label">Aquest mes</span>
                 <strong>{completedThisMonth}</strong>
@@ -671,10 +712,6 @@ export function ActivatApp() {
                 </span>
               </button>
             </section>
-
-            <Button size="lg" className="wide-add" onClick={() => openActivityFor(today)}>
-              <Plus /> Afegir una activitat
-            </Button>
           </TabsContent>
 
           <TabsContent value="calendar" className="content page-stack">
@@ -799,108 +836,123 @@ export function ActivatApp() {
           </TabsContent>
 
           <TabsContent value="activity" className="content page-stack">
-            <section className="activity-catalog">
-              <div className="section-heading catalog-heading">
-                <div><p className="card-kicker">LES TEVES ACTIVITATS</p><h2>Què et ve de gust fer?</h2></div>
-                <Button variant="outline" onClick={openNewActivityType}><Plus /> Nova</Button>
-              </div>
-              <div className="activity-type-grid">
-                {activityTypes.map((definition) => (
-                  <div
-                    className="activity-type-card"
-                    key={definition.name}
-                    style={{ "--activity-color": definition.color } as CSSProperties}
-                  >
-                    <button
-                      type="button"
-                      className="type-card-main"
-                      onClick={() => openActivityTypeEditor(definition)}
-                    >
-                      <span className="activity-type-icon"><ActivityGlyph type={definition.name} iconKey={definition.iconKey} /></span>
-                      <strong>{definition.name}</strong>
-                    </button>
-                    <button
-                      type="button"
-                      className="remove-type"
-                      aria-label={`Esborrar ${definition.name}`}
-                      onClick={() => void deleteActivityType(definition)}
-                    ><X /></button>
+            {activitySection === "catalog" ? (
+              <>
+                <nav className="activity-shortcuts" aria-label="Consulta d’activitats">
+                  <button type="button" onClick={() => setActivitySection("stats")}>
+                    <span><BarChart3 /></span>
+                    <div><strong>Estadístiques</strong><small>Consulta el teu progrés</small></div>
+                    <ChevronRight />
+                  </button>
+                  <button type="button" onClick={() => setActivitySection("history")}>
+                    <span><History /></span>
+                    <div><strong>Historial</strong><small>Revisa les activitats</small></div>
+                    <ChevronRight />
+                  </button>
+                </nav>
+
+                <section className="activity-catalog">
+                  <div className="section-heading catalog-heading">
+                    <div><p className="card-kicker">LES TEVES ACTIVITATS</p><h2>Què et ve de gust fer?</h2></div>
+                    <Button variant="outline" onClick={openNewActivityType}><Plus /> Nova</Button>
                   </div>
-                ))}
-              </div>
-            </section>
+                  <div className="activity-type-grid">
+                    {sortedActivityTypes.map((definition) => {
+                      const completedCount = activityCompletedCounts.get(definition.name) ?? 0;
+                      return (
+                        <div
+                          className="activity-type-card"
+                          key={definition.name}
+                          style={{ "--activity-color": definition.color } as CSSProperties}
+                        >
+                          <button
+                            type="button"
+                            className="type-card-main"
+                            onClick={() => openActivityTypeEditor(definition)}
+                          >
+                            <span className="activity-type-icon"><ActivityGlyph type={definition.name} iconKey={definition.iconKey} /></span>
+                            <span className="type-card-copy">
+                              <strong>{definition.name}</strong>
+                              <small>{completedCount} {completedCount === 1 ? "vegada" : "vegades"}</small>
+                            </span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              </>
+            ) : (
+              <>
+                <Button variant="ghost" className="activity-back" onClick={() => setActivitySection("catalog")}>
+                  <ChevronLeft /> Activitats
+                </Button>
+                <section className="filter-panel">
+                  <div className="filter-field">
+                    <Label>Tipus d’activitat</Label>
+                    <Select value={activityFilter} onValueChange={setActivityFilter}>
+                      <SelectTrigger className="large-select"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Totes">Totes les activitats</SelectItem>
+                        {activityFilterOptions.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <PeriodPicker
+                    period={activityPeriod}
+                    anchor={activityAnchor}
+                    label={periodLabel(activityPeriod, activityAnchor)}
+                    onPeriod={setActivityPeriod}
+                    onMove={(amount) => moveAnchor(setActivityAnchor, activityAnchor, activityPeriod, amount)}
+                  />
+                </section>
 
-            <section className="filter-panel">
-              <div className="filter-field">
-                <Label>Tipus d’activitat</Label>
-                <Select value={activityFilter} onValueChange={setActivityFilter}>
-                  <SelectTrigger className="large-select"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Totes">Totes les activitats</SelectItem>
-                    {activityFilterOptions.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <PeriodPicker
-                period={activityPeriod}
-                anchor={activityAnchor}
-                label={periodLabel(activityPeriod, activityAnchor)}
-                onPeriod={setActivityPeriod}
-                onMove={(amount) => moveAnchor(setActivityAnchor, activityAnchor, activityPeriod, amount)}
-              />
-            </section>
-
-            <section className="summary-strip">
-              <div><strong>{activityHistory.filter((item) => item.status === "completed").length}</strong><span>fetes</span></div>
-              <div><strong>{activityHistory.filter((item) => item.status === "cancelled").length}</strong><span>cancel·lades</span></div>
-              <div><strong>{new Set(activityHistory.filter((item) => item.status === "completed").map((item) => item.type)).size}</strong><span>tipus</span></div>
-            </section>
-
-            <section className="chart-card">
-              <div className="section-heading">
-                <div><p className="card-kicker">RESUM</p><h2>Activitats fetes</h2></div>
-              </div>
-              {activityChart.length ? (
-                <div className="activity-chart" aria-label="Gràfic d’activitats fetes">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={activityChart} margin={{ top: 12, right: 4, left: -24, bottom: 4 }}>
-                      <CartesianGrid vertical={false} stroke="#dce8df" />
-                      <XAxis dataKey="name" tick={{ fill: "#52665b", fontSize: 12 }} axisLine={false} tickLine={false} />
-                      <YAxis allowDecimals={false} tick={{ fill: "#52665b", fontSize: 12 }} axisLine={false} tickLine={false} />
-                      <Tooltip cursor={{ fill: "#eef5ef" }} />
-                      <Bar dataKey="total" radius={[8, 8, 2, 2]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <EmptyState text="Encara no hi ha activitats fetes en aquest període." />
-              )}
-            </section>
-
-            <section className="history-section">
-              <div className="section-heading"><div><p className="card-kicker">HISTORIAL</p><h2>Registre d’activitats</h2></div></div>
-              <div className="history-list">
-                {activityHistory.length ? (
-                  activityHistory.map((item) =>
-                    item.status === "cancelled" ? (
-                      <SwipeableShell
-                        key={item.id}
-                        disabled={busy}
-                        onDelete={() => setPendingAction({ kind: "delete", activity: item })}
-                        onSecondary={() => setPendingAction({ kind: "reactivate", activity: item })}
-                        secondaryLabel="Activar"
-                      >
-                        <ActivityRow item={item} definition={definitionFor(item.type, activityTypes)} />
-                      </SwipeableShell>
-                    ) : (
-                      <ActivityRow key={item.id} item={item} definition={definitionFor(item.type, activityTypes)} />
-                    ),
-                  )
+                {activitySection === "stats" ? (
+                  <>
+                    <section className="summary-strip">
+                      <div><strong>{activityHistory.filter((item) => item.status === "completed").length}</strong><span>fetes</span></div>
+                      <div><strong>{activityHistory.filter((item) => item.status === "cancelled").length}</strong><span>cancel·lades</span></div>
+                      <div><strong>{new Set(activityHistory.filter((item) => item.status === "completed").map((item) => item.type)).size}</strong><span>tipus</span></div>
+                    </section>
+                    <section className="chart-card">
+                      <div className="section-heading"><div><p className="card-kicker">RESUM</p><h2>Activitats fetes</h2></div></div>
+                      {activityChart.length ? (
+                        <div className="activity-chart" aria-label="Gràfic d’activitats fetes">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={activityChart} margin={{ top: 12, right: 4, left: -24, bottom: 4 }}>
+                              <CartesianGrid vertical={false} stroke="#dce8df" />
+                              <XAxis dataKey="name" tick={{ fill: "#52665b", fontSize: 12 }} axisLine={false} tickLine={false} />
+                              <YAxis allowDecimals={false} tick={{ fill: "#52665b", fontSize: 12 }} axisLine={false} tickLine={false} />
+                              <Tooltip cursor={{ fill: "#eef5ef" }} />
+                              <Bar dataKey="total" radius={[8, 8, 2, 2]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : <EmptyState text="Encara no hi ha activitats fetes en aquest període." />}
+                    </section>
+                  </>
                 ) : (
-                  <EmptyState text="No hi ha cap activitat amb aquests filtres." />
+                  <section className="history-section">
+                    <div className="section-heading"><div><p className="card-kicker">HISTORIAL</p><h2>Registre d’activitats</h2></div></div>
+                    <div className="history-list">
+                      {activityHistory.length ? activityHistory.map((item) =>
+                        item.status === "cancelled" ? (
+                          <SwipeableShell
+                            key={item.id}
+                            disabled={busy}
+                            onDelete={() => setPendingAction({ kind: "delete", activity: item })}
+                            onSecondary={() => setPendingAction({ kind: "reactivate", activity: item })}
+                            secondaryLabel="Activar"
+                          >
+                            <ActivityRow item={item} definition={definitionFor(item.type, activityTypes)} />
+                          </SwipeableShell>
+                        ) : <ActivityRow key={item.id} item={item} definition={definitionFor(item.type, activityTypes)} />,
+                      ) : <EmptyState text="No hi ha cap activitat amb aquests filtres." />}
+                    </div>
+                  </section>
                 )}
-              </div>
-            </section>
+              </>
+            )}
           </TabsContent>
 
           <TabsContent value="weight" className="content page-stack">
@@ -1134,6 +1186,27 @@ export function ActivatApp() {
               <span><ActivityGlyph iconKey={newActivityIcon} /></span>
               <strong>{newActivityName || "La teva activitat"}</strong>
             </div>
+            {editingActivityName && (
+              <div className={`type-delete-panel ${(activityCompletedCounts.get(editingActivityName) ?? 0) > 0 ? "blocked" : ""}`}>
+                <div>
+                  <strong>Esborrar activitat</strong>
+                  <p>
+                    {(activityCompletedCounts.get(editingActivityName) ?? 0) > 0
+                      ? `L’has fet ${activityCompletedCounts.get(editingActivityName)} ${(activityCompletedCounts.get(editingActivityName) ?? 0) === 1 ? "vegada" : "vegades"} i no es pot esborrar.`
+                      : "També s’esborraran les seves planificacions pendents o cancel·lades."}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={busy || (activityCompletedCounts.get(editingActivityName) ?? 0) > 0}
+                  onClick={() => {
+                    const definition = activityTypes.find((item) => item.name === editingActivityName);
+                    if (definition) setPendingTypeDelete(definition);
+                  }}
+                >Esborrar</Button>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" size="lg" onClick={() => setNewActivityOpen(false)}>Cancel·lar</Button>
@@ -1227,6 +1300,27 @@ export function ActivatApp() {
                   ? pendingAction.activity.status === "completed" ? "Sí, fer pendent" : "Sí, activar"
                   : "Sí, cancel·lar"}
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={pendingTypeDelete !== null} onOpenChange={(open) => !open && setPendingTypeDelete(null)}>
+        <AlertDialogContent className="confirm-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Esborrar aquesta activitat?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingTypeDelete
+                ? `S’esborrarà “${pendingTypeDelete.name}” de la teva llista, incloses les seves planificacions pendents o cancel·lades. Aquesta acció no es pot desfer.`
+                : "Aquesta acció no es pot desfer."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Tornar</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={busy}
+              onClick={() => pendingTypeDelete && void deleteActivityType(pendingTypeDelete)}
+            >Sí, esborrar</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

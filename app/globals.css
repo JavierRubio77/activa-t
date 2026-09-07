@@ -160,8 +160,8 @@ button { -webkit-tap-highlight-color: transparent; }
   --activity-color: #17a673;
   position: relative;
   overflow: hidden;
-  min-height: 286px;
-  padding: 26px;
+  min-height: 236px;
+  padding: 22px;
   border-radius: 30px;
   background:
     radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--activity-color) 58%, white), transparent 43%),
@@ -188,11 +188,11 @@ button { -webkit-tap-highlight-color: transparent; }
 
 .hero-orb {
   position: absolute;
-  top: 22px;
-  right: 22px;
+  top: 18px;
+  right: 18px;
   display: grid;
-  width: 54px;
-  height: 54px;
+  width: 48px;
+  height: 48px;
   place-items: center;
   border-radius: 18px;
   background: rgba(255,255,255,.13);
@@ -209,7 +209,7 @@ button { -webkit-tap-highlight-color: transparent; }
 }
 
 .hero-card .card-kicker { color: #bcd7c3; }
-.hero-card h2 { margin: 44px 0 4px; font-size: 2.25rem; letter-spacing: -.045em; }
+.hero-card h2 { margin: 28px 0 3px; font-size: 2rem; letter-spacing: -.045em; }
 .hero-date { margin: 0; color: #d8e7dc; font-size: 1.04rem; text-transform: capitalize; }
 
 .hero-actions {
@@ -218,10 +218,10 @@ button { -webkit-tap-highlight-color: transparent; }
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
-  margin-top: 28px;
+  margin-top: 19px;
 }
 
-.hero-actions button, .wide-add, .weight-add { min-height: 51px; border-radius: 15px; font-size: 1rem; font-weight: 750; }
+.hero-actions button, .wide-add, .weight-add { min-height: 48px; border-radius: 15px; font-size: 1rem; font-weight: 750; }
 .complete-button { background: #c7df83; color: #173f32; }
 .complete-button:hover { background: #d3e99a; }
 
@@ -243,7 +243,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .activity-carousel-dots button { width: 7px; height: 7px; padding: 0; border: 0; border-radius: 999px; background: #cad7cd; transition: width .18s ease, background .18s ease; }
 .activity-carousel-dots button.active { width: 23px; background: #2c815f; }
 
-.empty-hero { position: relative; z-index: 1; margin-top: 44px; }
+.empty-hero { position: relative; z-index: 1; margin-top: 30px; }
 .empty-hero h2 { margin: 0; font-size: 1.8rem; }
 .empty-hero p { margin: 7px 0 25px; color: #d8e7dc; }
 .empty-hero button { min-height: 50px; border-radius: 15px; background: #c7df83; color: #173f32; font-size: 1rem; font-weight: 750; }
@@ -419,6 +419,46 @@ button { -webkit-tap-highlight-color: transparent; }
   box-shadow: 0 14px 42px rgba(37, 76, 58, .07);
 }
 
+.activity-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.activity-shortcuts button {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 40px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 9px;
+  min-height: 74px;
+  padding: 11px;
+  border: 1px solid #dbe7d8;
+  border-radius: 20px;
+  background: linear-gradient(145deg, rgba(255,255,255,.98), rgba(234,245,226,.95));
+  color: #214b3b;
+  text-align: left;
+  box-shadow: 0 10px 28px rgba(37, 76, 58, .065);
+}
+
+.activity-shortcuts button > span {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 14px;
+  background: #dceecb;
+  color: #257052;
+}
+
+.activity-shortcuts button > span svg { width: 21px; }
+.activity-shortcuts button > svg { width: 18px; color: #7c9185; }
+.activity-shortcuts button div { display: flex; min-width: 0; flex-direction: column; }
+.activity-shortcuts button strong { overflow: hidden; font-size: .94rem; text-overflow: ellipsis; white-space: nowrap; }
+.activity-shortcuts button small { overflow: hidden; color: #71847a; font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
+.activity-shortcuts button:active { transform: scale(.985); }
+.activity-back { align-self: flex-start; margin: -4px 0 -4px -9px; color: #286f55; font-weight: 800; }
+
 .catalog-heading { align-items: center; }
 .catalog-heading button { min-height: 42px; border-radius: 13px; background: rgba(255,255,255,.75); font-size: .9rem; }
 .activity-type-grid {
@@ -470,24 +510,8 @@ button { -webkit-tap-highlight-color: transparent; }
 
 .activity-type-icon svg { width: 23px; height: 23px; }
 .activity-type-card strong { max-width: 100%; overflow: hidden; font-size: .9rem; text-overflow: ellipsis; white-space: nowrap; }
-.remove-type {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 2;
-  display: grid;
-  width: 31px;
-  height: 31px;
-  place-items: center;
-  border: 0;
-  border-radius: 50%;
-  background: rgba(255,255,255,.82);
-  color: #6b776f;
-  box-shadow: 0 3px 12px rgba(33, 67, 50, .1);
-}
-
-.remove-type svg { width: 15px; }
-
+.type-card-copy { display: flex; width: 100%; min-width: 0; flex-direction: column; }
+.type-card-copy small { color: #6e8177; font-size: .8rem; font-weight: 700; }
 .filter-panel { display: grid; gap: 15px; padding: 17px; }
 .filter-panel.single { display: block; }
 .filter-field { display: flex; flex-direction: column; gap: 7px; }
@@ -726,6 +750,23 @@ button { -webkit-tap-highlight-color: transparent; }
 
 .type-preview span { display: grid; width: 44px; height: 44px; place-items: center; border-radius: 15px; background: var(--activity-color); color: white; }
 .type-preview svg { width: 22px; }
+.type-delete-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid #efd0cd;
+  border-radius: 17px;
+  background: #fff7f6;
+}
+.type-delete-panel.blocked { border-color: #dce4dc; background: #f6f8f5; }
+.type-delete-panel > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.type-delete-panel strong { color: #653b38; font-size: .9rem; }
+.type-delete-panel.blocked strong { color: #53675d; }
+.type-delete-panel p { margin: 0; color: #866865; font-size: .76rem; line-height: 1.35; }
+.type-delete-panel.blocked p { color: #718178; }
+.type-delete-panel button { flex: 0 0 auto; }
 
 @media (min-width: 640px) {
   .topbar { padding-top: 34px; }
@@ -744,6 +785,7 @@ button { -webkit-tap-highlight-color: transparent; }
   .metric-card strong { font-size: 1.55rem; }
   .bottom-nav { right: 7px; left: 7px; }
   .bottom-nav [data-slot="tabs-trigger"] { padding-inline: 1px; }
+  .activity-shortcuts { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -160,12 +160,26 @@ export async function POST(request: Request) {
       if (!name) {
         return Response.json({ error: "No s’ha trobat el tipus d’activitat." }, { status: 400 });
       }
-      await env.DB.prepare(
-        `INSERT INTO activity_types (owner_key, name, icon_key, color, hidden)
-         VALUES (?, ?, ?, ?, 1)
-         ON CONFLICT(owner_key, name)
-         DO UPDATE SET hidden = 1`,
-      ).bind(ownerKey, name, payload.iconKey || "sparkles", payload.color || "#65a84f").run();
+      const completed = await env.DB.prepare(
+        "SELECT COUNT(*) AS total FROM activities WHERE owner_key = ? AND type = ? AND status = 'completed'",
+      ).bind(ownerKey, name).first<{ total: number }>();
+      if (Number(completed?.total ?? 0) > 0) {
+        return Response.json(
+          { error: "Aquesta activitat ja té registres fets i no es pot esborrar." },
+          { status: 409 },
+        );
+      }
+      await env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO activity_types (owner_key, name, icon_key, color, hidden)
+           VALUES (?, ?, ?, ?, 1)
+           ON CONFLICT(owner_key, name)
+           DO UPDATE SET hidden = 1`,
+        ).bind(ownerKey, name, payload.iconKey || "sparkles", payload.color || "#65a84f"),
+        env.DB.prepare(
+          "DELETE FROM activities WHERE owner_key = ? AND type = ? AND status != 'completed'",
+        ).bind(ownerKey, name),
+      ]);
     } else {
       return Response.json({ error: "Acció no reconeguda." }, { status: 400 });
     }
