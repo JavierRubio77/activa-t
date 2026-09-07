@@ -10,6 +10,8 @@ export const activities = sqliteTable(
     activityDate: text("activity_date").notNull(),
     startTime: text("start_time"),
     status: text("status").notNull().default("scheduled"),
+    everCancelled: integer("ever_cancelled", { mode: "boolean" }).notNull().default(false),
+    everCompleted: integer("ever_completed", { mode: "boolean" }).notNull().default(false),
     createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   },
   (table) => [

@@ -34,7 +34,8 @@ export async function GET(request: Request) {
     const [activitiesResult, activityTypesResult, weightsResult] = await env.DB.batch([
       env.DB.prepare(
         `SELECT id, type, activity_date AS activityDate, start_time AS startTime,
-                status, created_at AS createdAt
+                status, ever_cancelled AS everCancelled, ever_completed AS everCompleted,
+                created_at AS createdAt
          FROM activities WHERE owner_key = ?
          ORDER BY activity_date DESC, COALESCE(start_time, '23:59') DESC, id DESC`,
       ).bind(ownerKey),
@@ -75,9 +76,16 @@ export async function POST(request: Request) {
         return Response.json({ error: "Falten dades de l’activitat." }, { status: 400 });
       }
       await env.DB.prepare(
-        `INSERT INTO activities (owner_key, type, activity_date, start_time, status)
-         VALUES (?, ?, ?, ?, ?)`,
-      ).bind(ownerKey, type, activityDate, payload.startTime || null, status).run();
+        `INSERT INTO activities (owner_key, type, activity_date, start_time, status, ever_completed)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        ownerKey,
+        type,
+        activityDate,
+        payload.startTime || null,
+        status,
+        status === "completed" ? 1 : 0,
+      ).run();
     } else if (payload.action === "editActivity") {
       const type = payload.type?.trim();
       const activityDate = payload.activityDate?.trim();
@@ -94,8 +102,12 @@ export async function POST(request: Request) {
         return Response.json({ error: "Actualització no vàlida." }, { status: 400 });
       }
       await env.DB.prepare(
-        "UPDATE activities SET status = ? WHERE id = ? AND owner_key = ?",
-      ).bind(payload.status, payload.id, ownerKey).run();
+        `UPDATE activities
+         SET ever_cancelled = CASE WHEN status = 'cancelled' OR ? = 'cancelled' THEN 1 ELSE ever_cancelled END,
+             ever_completed = CASE WHEN status = 'completed' OR ? = 'completed' THEN 1 ELSE ever_completed END,
+             status = ?
+         WHERE id = ? AND owner_key = ?`,
+      ).bind(payload.status, payload.status, payload.status, payload.id, ownerKey).run();
     } else if (payload.action === "deleteActivity") {
       if (!payload.id) {
         return Response.json({ error: "No s’ha trobat l’activitat." }, { status: 400 });
@@ -160,12 +172,14 @@ export async function POST(request: Request) {
       if (!name) {
         return Response.json({ error: "No s’ha trobat el tipus d’activitat." }, { status: 400 });
       }
-      const completed = await env.DB.prepare(
-        "SELECT COUNT(*) AS total FROM activities WHERE owner_key = ? AND type = ? AND status = 'completed'",
+      const protectedRecords = await env.DB.prepare(
+        `SELECT COUNT(*) AS total FROM activities
+         WHERE owner_key = ? AND type = ?
+           AND (status IN ('completed', 'cancelled') OR ever_cancelled = 1 OR ever_completed = 1)`,
       ).bind(ownerKey, name).first<{ total: number }>();
-      if (Number(completed?.total ?? 0) > 0) {
+      if (Number(protectedRecords?.total ?? 0) > 0) {
         return Response.json(
-          { error: "Aquesta activitat ja té registres fets i no es pot esborrar." },
+          { error: "Aquesta activitat ja té registres fets o cancel·lats i no es pot esborrar." },
           { status: 409 },
         );
       }
@@ -177,7 +191,7 @@ export async function POST(request: Request) {
            DO UPDATE SET hidden = 1`,
         ).bind(ownerKey, name, payload.iconKey || "sparkles", payload.color || "#65a84f"),
         env.DB.prepare(
-          "DELETE FROM activities WHERE owner_key = ? AND type = ? AND status != 'completed'",
+          "DELETE FROM activities WHERE owner_key = ? AND type = ? AND status = 'scheduled'",
         ).bind(ownerKey, name),
       ]);
     } else {

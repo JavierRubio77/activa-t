@@ -78,6 +78,8 @@ type ActivityRecord = {
   activityDate: string;
   startTime: string | null;
   status: "scheduled" | "completed" | "cancelled";
+  everCancelled: number | boolean;
+  everCompleted: number | boolean;
   createdAt: string;
 };
 
@@ -301,7 +303,24 @@ export function ActivatApp() {
   const activityCompletedCounts = useMemo(() => {
     const counts = new Map<string, number>();
     activities.forEach((item) => {
-      if (item.status === "completed") counts.set(item.type, (counts.get(item.type) ?? 0) + 1);
+      if (item.status === "completed" || Boolean(item.everCompleted)) {
+        counts.set(item.type, (counts.get(item.type) ?? 0) + 1);
+      }
+    });
+    return counts;
+  }, [activities]);
+
+  const activityLockedCounts = useMemo(() => {
+    const counts = new Map<string, { completed: number; cancelled: number }>();
+    activities.forEach((item) => {
+      const wasCancelled = item.status === "cancelled" || Boolean(item.everCancelled);
+      const wasCompleted = item.status === "completed" || Boolean(item.everCompleted);
+      if (!wasCompleted && !wasCancelled) return;
+      const current = counts.get(item.type) ?? { completed: 0, cancelled: 0 };
+      counts.set(item.type, {
+        completed: current.completed + (wasCompleted ? 1 : 0),
+        cancelled: current.cancelled + (wasCancelled ? 1 : 0),
+      });
     });
     return counts;
   }, [activities]);
@@ -491,7 +510,11 @@ export function ActivatApp() {
 
   async function deleteWeight(id: number) {
     const deleted = await postData({ action: "deleteWeight", id });
-    if (deleted) setPendingWeightDelete(null);
+    if (deleted) {
+      setPendingWeightDelete(null);
+      setWeightOpen(false);
+      setEditingWeightId(null);
+    }
   }
 
   function openActivityFor(date: string) {
@@ -1020,12 +1043,12 @@ export function ActivatApp() {
                   const previous = list[index + 1];
                   const diff = previous ? item.weight - previous.weight : null;
                   return (
-                    <SwipeableShell
+                    <button
+                      type="button"
                       key={item.id}
-                      className="weight-swipe"
+                      className="weight-record-card"
                       disabled={busy}
-                      onDelete={() => setPendingWeightDelete(item)}
-                      onOpen={() => openWeightEditor(item)}
+                      onClick={() => openWeightEditor(item)}
                     >
                       <div className="weight-row">
                         <span className="weight-row-icon"><Scale /></span>
@@ -1034,12 +1057,11 @@ export function ActivatApp() {
                           {diff === null ? "—" : `${diff > 0 ? "+" : ""}${formatWeight(diff)}`}
                         </em>
                       </div>
-                    </SwipeableShell>
+                    </button>
                   );
                 })}
                 {!filteredWeights.length && <EmptyState text="No hi ha cap pes amb aquest filtre." />}
               </div>
-              {filteredWeights.length > 0 && <p className="swipe-help weight-swipe-help"><span>→ Esborrar</span></p>}
             </section>
           </TabsContent>
         </>
@@ -1186,27 +1208,31 @@ export function ActivatApp() {
               <span><ActivityGlyph iconKey={newActivityIcon} /></span>
               <strong>{newActivityName || "La teva activitat"}</strong>
             </div>
-            {editingActivityName && (
-              <div className={`type-delete-panel ${(activityCompletedCounts.get(editingActivityName) ?? 0) > 0 ? "blocked" : ""}`}>
+            {editingActivityName && (() => {
+              const locked = activityLockedCounts.get(editingActivityName) ?? { completed: 0, cancelled: 0 };
+              const cannotDelete = locked.completed + locked.cancelled > 0;
+              return (
+              <div className={`type-delete-panel ${cannotDelete ? "blocked" : ""}`}>
                 <div>
                   <strong>Esborrar activitat</strong>
                   <p>
-                    {(activityCompletedCounts.get(editingActivityName) ?? 0) > 0
-                      ? `L’has fet ${activityCompletedCounts.get(editingActivityName)} ${(activityCompletedCounts.get(editingActivityName) ?? 0) === 1 ? "vegada" : "vegades"} i no es pot esborrar.`
-                      : "També s’esborraran les seves planificacions pendents o cancel·lades."}
+                    {cannotDelete
+                      ? `Té ${locked.completed} ${locked.completed === 1 ? "registre fet" : "registres fets"} i ${locked.cancelled} ${locked.cancelled === 1 ? "registre cancel·lat" : "registres cancel·lats"}. No es pot esborrar.`
+                      : "També s’esborraran les seves planificacions pendents."}
                   </p>
                 </div>
                 <Button
                   type="button"
                   variant="destructive"
-                  disabled={busy || (activityCompletedCounts.get(editingActivityName) ?? 0) > 0}
+                  disabled={busy || cannotDelete}
                   onClick={() => {
                     const definition = activityTypes.find((item) => item.name === editingActivityName);
                     if (definition) setPendingTypeDelete(definition);
                   }}
                 >Esborrar</Button>
               </div>
-            )}
+              );
+            })()}
           </div>
           <DialogFooter>
             <Button variant="outline" size="lg" onClick={() => setNewActivityOpen(false)}>Cancel·lar</Button>
@@ -1249,6 +1275,20 @@ export function ActivatApp() {
               <Label htmlFor="weight-date">Data</Label>
               <Input id="weight-date" type="date" value={weightDate} max={today} onChange={(event) => setWeightDate(event.target.value)} />
             </div>
+            {editingWeightId && (() => {
+              const record = weights.find((item) => item.id === editingWeightId);
+              return record ? (
+                <div className="type-delete-panel">
+                  <div>
+                    <strong>Esborrar registre</strong>
+                    <p>S’eliminarà definitivament aquest registre de pes.</p>
+                  </div>
+                  <Button type="button" variant="destructive" disabled={busy} onClick={() => setPendingWeightDelete(record)}>
+                    Esborrar
+                  </Button>
+                </div>
+              ) : null;
+            })()}
           </div>
           <DialogFooter>
             <Button
@@ -1310,7 +1350,7 @@ export function ActivatApp() {
             <AlertDialogTitle>Esborrar aquesta activitat?</AlertDialogTitle>
             <AlertDialogDescription>
               {pendingTypeDelete
-                ? `S’esborrarà “${pendingTypeDelete.name}” de la teva llista, incloses les seves planificacions pendents o cancel·lades. Aquesta acció no es pot desfer.`
+                ? `S’esborrarà “${pendingTypeDelete.name}” de la teva llista, incloses les seves planificacions pendents. Aquesta acció no es pot desfer.`
                 : "Aquesta acció no es pot desfer."}
             </AlertDialogDescription>
           </AlertDialogHeader>

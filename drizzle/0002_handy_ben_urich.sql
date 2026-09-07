@@ -1,0 +1,1 @@
+ALTER TABLE `activities` ADD `ever_cancelled` integer DEFAULT false NOT NULL;

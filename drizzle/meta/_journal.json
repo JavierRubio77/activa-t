@@ -15,6 +15,20 @@
       "when": 1788080805972,
       "tag": "0001_overrated_black_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788780379999,
+      "tag": "0002_handy_ben_urich",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788780447711,
+      "tag": "0003_equal_veda",
+      "breakpoints": true
     }
   ]
 }

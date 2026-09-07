@@ -310,8 +310,6 @@ button { -webkit-tap-highlight-color: transparent; }
   background: linear-gradient(90deg, #dc4e43 0 50%, #db9d2e 50% 100%);
 }
 .swipe-shell.delete-only { background: #dc4e43; }
-.weight-swipe { border-radius: 19px; }
-.weight-swipe-help { margin-top: 10px; }
 
 .hero-swipe { border-radius: 30px; box-shadow: 0 22px 50px rgba(23, 76, 58, .18); }
 .swipe-content {
@@ -560,6 +558,9 @@ button { -webkit-tap-highlight-color: transparent; }
 .trend-pill.up, .weight-row em.up { background: #fff0df; color: #a65c1c; }
 .weight-add { width: 100%; }
 .weight-row-icon { background: #e8f1e6; color: #2c7458; }
+.weight-record-card { display: block; width: 100%; padding: 0; border: 0; border-radius: 19px; background: transparent; color: inherit; text-align: left; }
+.weight-record-card:active { transform: scale(.99); }
+.weight-record-card:disabled { opacity: .65; }
 .weight-row div { display: flex; flex: 1; flex-direction: column; }
 .weight-row div strong { font-size: 1.05rem; }
 .weight-row em { padding: 5px 8px; border-radius: 999px; background: #e2efe3; color: #277052; font-size: .78rem; font-style: normal; font-weight: 800; }
