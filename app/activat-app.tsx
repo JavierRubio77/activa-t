@@ -102,7 +102,7 @@ type ActivityTypeDef = {
 type Period = "all" | "month" | "year";
 type View = "today" | "calendar" | "activity" | "weight";
 type ActivitySection = "catalog" | "stats" | "history";
-type PendingAction = { kind: "delete" | "cancel" | "reactivate"; activity: ActivityRecord } | null;
+type PendingAction = { kind: "delete" | "cancel" | "reactivate" | "complete"; activity: ActivityRecord } | null;
 
 const defaultActivityTypes: ActivityTypeDef[] = [
   { name: "Spinning", iconKey: "bike", color: "#17a673" },
@@ -430,6 +430,8 @@ export function ActivatApp() {
       await deleteActivity(action.activity.id);
     } else if (action.kind === "cancel") {
       await updateActivity(action.activity.id, "cancelled");
+    } else if (action.kind === "complete") {
+      await updateActivity(action.activity.id, "completed");
     } else {
       await reactivateActivity(action.activity.id);
     }
@@ -826,6 +828,7 @@ export function ActivatApp() {
                         onDelete={() => setPendingAction({ kind: "delete", activity: item })}
                         onSecondary={() => setPendingAction({ kind: "cancel", activity: item })}
                         onOpen={() => openScheduleEditor(item)}
+                        onLongPress={item.activityDate < today ? () => setPendingAction({ kind: "complete", activity: item }) : undefined}
                       >
                         <ActivityRow item={item} definition={definitionFor(item.type, activityTypes)} />
                       </SwipeableShell>
@@ -854,7 +857,7 @@ export function ActivatApp() {
               )}
             </div>
             {activities.some((item) => item.activityDate === selectedDate && item.status === "scheduled") && (
-              <p className="swipe-help"><span>→ Esborrar</span><span>← Cancel·lar</span></p>
+              <p className="swipe-help"><span>→ Esborrar</span><span>← Cancel·lar</span>{selectedDate < today && <span>Mantén premut · Marcar com a feta</span>}</p>
             )}
           </TabsContent>
 
@@ -1312,6 +1315,8 @@ export function ActivatApp() {
             <AlertDialogTitle>
               {pendingAction?.kind === "delete"
                 ? "Esborrar l’activitat?"
+                : pendingAction?.kind === "complete"
+                  ? "Marcar l’activitat com a feta?"
                 : pendingAction?.kind === "reactivate"
                   ? pendingAction.activity.status === "completed"
                     ? "Tornar a posar l’activitat pendent?"
@@ -1321,6 +1326,8 @@ export function ActivatApp() {
             <AlertDialogDescription>
               {pendingAction?.kind === "delete"
                 ? `S’eliminarà ${pendingAction.activity.type} del ${shortDate(pendingAction.activity.activityDate)}. Aquesta acció no es pot desfer.`
+                : pendingAction?.kind === "complete"
+                  ? `Confirmes que vas fer ${pendingAction.activity.type} el ${shortDate(pendingAction.activity.activityDate)}? Apareixerà a l’historial.`
                 : pendingAction?.kind === "reactivate"
                   ? pendingAction.activity.status === "completed"
                     ? "Deixarà de constar com a feta i tornarà a aparèixer entre les activitats programades."
@@ -1336,6 +1343,8 @@ export function ActivatApp() {
             >
               {pendingAction?.kind === "delete"
                 ? "Sí, esborrar"
+                : pendingAction?.kind === "complete"
+                  ? "Sí, marcar com a feta"
                 : pendingAction?.kind === "reactivate"
                   ? pendingAction.activity.status === "completed" ? "Sí, fer pendent" : "Sí, activar"
                   : "Sí, cancel·lar"}
@@ -1437,6 +1446,7 @@ function SwipeableShell({
   onDelete,
   onSecondary,
   onOpen,
+  onLongPress,
   secondaryLabel = "Cancel·lar",
   disabled = false,
   className = "",
@@ -1445,6 +1455,7 @@ function SwipeableShell({
   onDelete: () => void;
   onSecondary?: () => void;
   onOpen?: () => void;
+  onLongPress?: () => void;
   secondaryLabel?: string;
   disabled?: boolean;
   className?: string;
@@ -1452,12 +1463,37 @@ function SwipeableShell({
   const startX = useRef<number | null>(null);
   const offsetRef = useRef(0);
   const draggedRef = useRef(false);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressedRef = useRef(false);
+  const startY = useRef<number | null>(null);
   const [offset, setOffset] = useState(0);
+
+  function clearLongPress() {
+    if (longPressTimer.current !== null) clearTimeout(longPressTimer.current);
+    longPressTimer.current = null;
+  }
+
+  useEffect(() => () => {
+    if (longPressTimer.current !== null) clearTimeout(longPressTimer.current);
+  }, []);
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (disabled) return;
     startX.current = event.clientX;
+    startY.current = event.clientY;
     draggedRef.current = false;
+    longPressedRef.current = false;
+    clearLongPress();
+    if (onLongPress && event.isPrimary && (event.pointerType !== "mouse" || event.button === 0)) {
+      longPressTimer.current = setTimeout(() => {
+        longPressTimer.current = null;
+        if (startX.current === null || draggedRef.current) return;
+        longPressedRef.current = true;
+        startX.current = null;
+        startY.current = null;
+        onLongPress();
+      }, 650);
+    }
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
@@ -1465,6 +1501,7 @@ function SwipeableShell({
     if (startX.current === null || disabled) return;
     const minimum = onSecondary ? -110 : 0;
     const rawDistance = event.clientX - startX.current;
+    if (Math.abs(rawDistance) > 8 || Math.abs(event.clientY - (startY.current ?? event.clientY)) > 8) clearLongPress();
     const distance = Math.max(minimum, Math.min(110, rawDistance));
     if (Math.abs(rawDistance) > 6) draggedRef.current = true;
     offsetRef.current = distance;
@@ -1472,6 +1509,8 @@ function SwipeableShell({
   }
 
   function finishSwipe() {
+    clearLongPress();
+    startY.current = null;
     if (startX.current === null) return;
     startX.current = null;
     if (offsetRef.current > 72) {
@@ -1507,12 +1546,19 @@ function SwipeableShell({
         onPointerMove={onPointerMove}
         onPointerUp={finishSwipe}
         onPointerCancel={() => {
+          clearLongPress();
           startX.current = null;
+          startY.current = null;
           offsetRef.current = 0;
           draggedRef.current = false;
           setOffset(0);
         }}
         onClick={(event) => {
+          if (longPressedRef.current) {
+            longPressedRef.current = false;
+            event.preventDefault();
+            return;
+          }
           if (!onOpen) return;
           if (draggedRef.current) {
             draggedRef.current = false;
@@ -1520,6 +1566,9 @@ function SwipeableShell({
           }
           if ((event.target as HTMLElement).closest("button, input, label, a")) return;
           onOpen();
+        }}
+        onContextMenu={(event) => {
+          if (onLongPress) event.preventDefault();
         }}
       >
         {children}
