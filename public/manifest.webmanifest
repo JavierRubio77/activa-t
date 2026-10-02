@@ -11,13 +11,13 @@
   "theme_color": "#174c3c",
   "icons": [
     {
-      "src": "/icons/activat-cycling-v2-192.png",
+      "src": "/icons/activa-t-icon-192-v2.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icons/activat-cycling-v2-512.png",
+      "src": "/icons/activa-t-icon-512-v2.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"

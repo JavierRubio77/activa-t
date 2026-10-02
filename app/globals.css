@@ -73,6 +73,12 @@ button { -webkit-tap-highlight-color: transparent; }
   padding-bottom: calc(96px + env(safe-area-inset-bottom));
 }
 
+.launch-splash { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; overflow: hidden; background: #10130f; animation: launch-splash-out .35s ease 1.65s forwards; pointer-events: none; }
+.launch-splash > img { width: 100%; height: 100%; object-fit: cover; }
+.launch-splash-brand { position: absolute; top: max(28px, env(safe-area-inset-top)); display: flex; align-items: center; gap: 10px; color: #f4f6ef; font-size: 25px; font-weight: 900; letter-spacing: -.06em; text-shadow: 0 2px 18px rgba(0,0,0,.35); }
+.launch-splash-brand > img { width: 42px; height: 42px; border-radius: 12px; object-fit: cover; box-shadow: 0 8px 25px rgba(0,0,0,.26); }
+@keyframes launch-splash-out { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
+
 .topbar {
   display: flex;
   align-items: center;
@@ -81,6 +87,13 @@ button { -webkit-tap-highlight-color: transparent; }
   margin: 0 auto;
   padding: calc(22px + env(safe-area-inset-top)) 0 16px;
 }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.account-button, .account-user { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--border); border-radius: 999px; background: rgba(255,255,255,.72); color: var(--foreground); padding: 8px 11px; font-size: 12px; font-weight: 700; }
+.account-button { cursor: pointer; }
+.account-button svg, .account-user > svg, .account-user button svg { width: 15px; height: 15px; }
+.account-user span { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-user button { display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.account-note { color: var(--muted-foreground); font-size: 12px; }
 
 .eyebrow {
   margin: 0 0 3px;

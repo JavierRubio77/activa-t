@@ -71,6 +71,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import GoogleAccount from "./google-account";
+import { supabase } from "@/lib/supabase-browser";
 
 type ActivityRecord = {
   id: number;
@@ -187,6 +189,7 @@ export function ActivatApp() {
   const [busy, setBusy] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [carouselIndex, setCarouselIndex] = useState(0);
+  const [showSplash, setShowSplash] = useState(true);
 
   const [calendarMonth, setCalendarMonth] = useState(() => {
     const now = new Date();
@@ -220,7 +223,10 @@ export function ActivatApp() {
   async function loadData() {
     try {
       setError("");
-      const response = await fetch("/api/data", { cache: "no-store" });
+      const { data: { session } } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+      const headers: Record<string, string> = {};
+      if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+      const response = await fetch("/api/data", { cache: "no-store", headers });
       const data = (await response.json()) as {
         activities?: ActivityRecord[];
         weights?: WeightRecord[];
@@ -242,14 +248,24 @@ export function ActivatApp() {
     const timer = window.setTimeout(() => void loadData(), 0);
     return () => window.clearTimeout(timer);
   }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShowSplash(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    const reload = () => { void loadData(); };
+    window.addEventListener("activa-t-auth-ready", reload);
+    return () => window.removeEventListener("activa-t-auth-ready", reload);
+  }, []);
 
   async function postData(payload: Record<string, unknown>) {
     setBusy(true);
     setError("");
     try {
+      const { data: { session } } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
       const response = await fetch("/api/data", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
         body: JSON.stringify(payload),
       });
       const data = (await response.json()) as { error?: string };
@@ -579,6 +595,8 @@ export function ActivatApp() {
   }
 
   return (
+    <>
+      {showSplash && <div className="launch-splash" role="status" aria-label="Activa’t"><img src="/activa-t-splash-anna-v2.png" alt="Activa’t: spinning, caminar i barre" /><div className="launch-splash-brand"><img src="/icons/activa-t-icon-1024-v2.png" alt="" /><span>ACTIVA’T</span></div></div>}
     <Tabs
       value={view}
       onValueChange={(value) => {
@@ -600,7 +618,7 @@ export function ActivatApp() {
             {view === "weight" && "El teu pes"}
           </h1>
         </div>
-        <div className="brand-mark" aria-hidden="true"><Sparkles /></div>
+        <div className="topbar-actions"><GoogleAccount /><div className="brand-mark" aria-hidden="true"><Sparkles /></div></div>
       </header>
 
       {error && (
@@ -1395,6 +1413,7 @@ export function ActivatApp() {
         </AlertDialogContent>
       </AlertDialog>
     </Tabs>
+    </>
   );
 }
 

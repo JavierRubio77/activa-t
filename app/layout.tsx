@@ -13,11 +13,11 @@ export const metadata: Metadata = {
   other: { "apple-mobile-web-app-capable": "yes" },
   icons: {
     icon: [
-      { url: "/icons/activat-cycling-v2-32.png", sizes: "32x32", type: "image/png" },
-      { url: "/icons/activat-cycling-v2-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/activa-t-icon-32-v2.png", sizes: "32x32", type: "image/png" },
+      { url: "/icons/activa-t-icon-192-v2.png", sizes: "192x192", type: "image/png" },
     ],
-    shortcut: "/icons/activat-cycling-v2-32.png",
-    apple: [{ url: "/icons/activat-cycling-v2-180.png", sizes: "180x180", type: "image/png" }],
+    shortcut: "/icons/activa-t-icon-32-v2.png",
+    apple: [{ url: "/icons/activa-t-icon-180-v2.png", sizes: "180x180", type: "image/png" }],
   },
 };
 

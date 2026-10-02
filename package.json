@@ -1,5 +1,5 @@
 {
-  "name": "activat-gimnas",
+  "name": "activa-t",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -8,16 +8,19 @@
   "scripts": {
     "install:ci": "bash scripts/install-ci.sh",
     "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vite",
-    "build": "bash scripts/build-verified.sh",
+    "build": "node scripts/build-verified.mjs",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "test": "npm run build && node --test tests/*.test.mjs",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
+    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate",
+    "preview": "wrangler dev",
+    "deploy": "node scripts/build-verified.mjs && node scripts/deploy-worker.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
     "@hookform/resolvers": "^5.7.1",
     "@shadcn/react": "^0.3.0",
+    "@supabase/supabase-js": "^2.117.2",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cmdk": "^1.1.1",
@@ -60,5 +63,5 @@
     "wrangler": "4.92.0"
   },
   "type": "module",
-  "displayName": "Activa\u2019t"
+  "displayName": "Activa’t"
 }
