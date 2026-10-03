@@ -9,21 +9,22 @@ export default function GoogleAccount() {
   const [email, setEmail] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    if (!supabase) return;
-    const acceptAllowedSession = async (session: Awaited<ReturnType<typeof supabase.auth.getSession>>["data"]["session"]) => {
+    const client = supabase;
+    if (!client) return;
+    const acceptAllowedSession = async (session: Awaited<ReturnType<typeof client.auth.getSession>>["data"]["session"]) => {
       if (session && isAllowedGoogleUser(session.user)) {
         setEmail(session.user.email ?? null);
       } else {
         setEmail(null);
-        if (session) await supabase.auth.signOut();
+        if (session) await client.auth.signOut();
       }
       window.dispatchEvent(new Event("activa-t-auth-ready"));
     };
-    void supabase.auth.getSession().then(({ data }) => acceptAllowedSession(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    void client.auth.getSession().then(({ data }) => acceptAllowedSession(data.session));
+    const { data } = client.auth.onAuthStateChange((_event, session) => {
       if (session && !isAllowedGoogleUser(session.user)) {
         setEmail(null);
-        window.setTimeout(() => void supabase?.auth.signOut(), 0);
+        window.setTimeout(() => void client.auth.signOut(), 0);
       } else {
         setEmail(session?.user.email ?? null);
       }
