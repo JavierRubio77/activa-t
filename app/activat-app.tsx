@@ -596,7 +596,7 @@ export function ActivatApp() {
 
   return (
     <>
-      {showSplash && <div className="launch-splash" role="status" aria-label="Activa’t"><img src="/activa-t-splash-anna-v2.png" alt="Activa’t: spinning, caminar i barre" /><div className="launch-splash-brand"><span>ACTIVA’T</span></div></div>}
+      {showSplash && <div className="launch-splash" role="status" aria-label="Activa’t"><img src="/activa-t-splash-anna-v3.png" alt="Activa’t: spinning, caminar i barre" /></div>}
     <Tabs
       value={view}
       onValueChange={(value) => {
