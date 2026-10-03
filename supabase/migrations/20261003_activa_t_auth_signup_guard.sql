@@ -1,0 +1,2 @@
+-- Historical migration placeholder: app-specific signup guards cannot be added
+-- to auth.users because this Supabase Auth project is shared across apps.
