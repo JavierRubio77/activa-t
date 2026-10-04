@@ -118,20 +118,6 @@ button { -webkit-tap-highlight-color: transparent; }
   line-height: 1.05;
 }
 
-.brand-mark {
-  display: grid;
-  width: 52px;
-  height: 52px;
-  place-items: center;
-  border: 1px solid rgba(255,255,255,.8);
-  border-radius: 18px;
-  background: linear-gradient(145deg, #116e50 15%, #a5cc4a 120%);
-  color: white;
-  box-shadow: 0 10px 26px rgba(31, 117, 88, .2);
-}
-
-.brand-mark svg { width: 24px; height: 24px; }
-
 .content {
   width: min(100% - 32px, 760px);
   margin: 0 auto;
