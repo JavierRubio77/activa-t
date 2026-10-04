@@ -16,7 +16,7 @@ export default function GoogleAccount() {
         setEmail(session.user.email ?? null);
       } else {
         setEmail(null);
-        if (session) await client.auth.signOut();
+        if (session) await client.auth.signOut({ scope: "local" });
       }
       window.dispatchEvent(new Event("activa-t-auth-ready"));
     };
@@ -24,7 +24,7 @@ export default function GoogleAccount() {
     const { data } = client.auth.onAuthStateChange((_event, session) => {
       if (session && !isAllowedGoogleUser(session.user)) {
         setEmail(null);
-        window.setTimeout(() => void client.auth.signOut(), 0);
+        window.setTimeout(() => void client.auth.signOut({ scope: "local" }), 0);
       } else {
         setEmail(session?.user.email ?? null);
       }
@@ -33,6 +33,6 @@ export default function GoogleAccount() {
     return () => data.subscription.unsubscribe();
   }, []);
   if (!supabaseConfigured) return <span className="account-note">Google pendent de configurar</span>;
-  if (!email) return <button className="account-button" type="button" disabled={busy} onClick={async () => { if (!supabase) return; setBusy(true); const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } }); if (error) { window.alert(error.message); setBusy(false); } }}><LogIn /> Entrar amb Google</button>;
-  return <div className="account-user"><UserRound /><span>{email}</span><button type="button" aria-label="Sortir" onClick={() => void supabase?.auth.signOut()}><LogOut /></button></div>;
+  if (!email) return <button className="account-button" type="button" disabled={busy} onClick={async () => { if (!supabase) return; setBusy(true); const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: new URL("/", window.location.origin).href } }); if (error) { window.alert(error.message); setBusy(false); } }}><LogIn /> Entrar amb Google</button>;
+  return <div className="account-user"><UserRound /><span>{email}</span><button type="button" aria-label="Sortir" onClick={() => void supabase?.auth.signOut({ scope: "local" })}><LogOut /></button></div>;
 }
