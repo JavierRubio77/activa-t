@@ -618,7 +618,7 @@ export function ActivatApp() {
             {view === "weight" && "El teu pes"}
           </h1>
         </div>
-        <div className="topbar-actions"><GoogleAccount /><div className="brand-mark" aria-hidden="true"><Sparkles /></div></div>
+        <div className="topbar-actions"><div className="brand-mark" aria-hidden="true"><Sparkles /></div><GoogleAccount /></div>
       </header>
 
       {error && (
