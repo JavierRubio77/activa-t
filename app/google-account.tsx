@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { Download, LogOut } from "lucide-react";
+import { Download, LogOut, UsersRound } from "lucide-react";
 import { isAllowedGoogleUser } from "@/lib/auth";
 import { supabase, supabaseConfigured } from "@/lib/supabase-browser";
 
@@ -61,7 +61,13 @@ export default function GoogleAccount() {
   const signIn = async () => {
     if (!supabase) return;
     setBusy(true);
-    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: new URL("/", window.location.origin).href } });
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: new URL("/", window.location.origin).href,
+        queryParams: { prompt: "select_account" },
+      },
+    });
     if (error) {
       window.alert(error.message);
       setBusy(false);
@@ -105,6 +111,7 @@ export default function GoogleAccount() {
       {user && menuOpen ? (
         <div className="account-popover" role="menu">
           <div className="account-popover-user"><strong>{user.email}</strong><span>Compte de Google connectat</span></div>
+          <button type="button" role="menuitem" disabled={busy} onClick={() => void signIn()}><UsersRound /> Canviar de compte</button>
           <button type="button" role="menuitem" disabled={busy} onClick={() => void downloadBackup()}><Download /> Guardar còpia de seguretat</button>
           <button type="button" role="menuitem" disabled={busy} onClick={() => void signOut()}><LogOut /> Desconnectar</button>
         </div>

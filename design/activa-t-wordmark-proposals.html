@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Activa’t · propuestas de nombre</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 32px;
+      color: #f4f6ef;
+      background: #0f1714;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    h1 { margin: 0 0 8px; font-size: clamp(1.5rem, 3vw, 2.4rem); }
+    .intro { max-width: 780px; margin: 0 0 26px; color: #c8d3c2; line-height: 1.5; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(170px, 1fr)); gap: 20px; max-width: 1120px; }
+    .proposal { margin: 0; }
+    .splash {
+      position: relative;
+      aspect-ratio: 9 / 16;
+      overflow: hidden;
+      border-radius: 22px;
+      background: #10130f url("../public/activa-t-splash-anna-v2.png") center / cover no-repeat;
+      box-shadow: 0 18px 40px rgba(0,0,0,.34);
+    }
+    .splash::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(5, 15, 11, .23), transparent 25%);
+      pointer-events: none;
+    }
+    .name {
+      position: absolute;
+      z-index: 1;
+      top: 4.2%;
+      inset-inline: 8px;
+      color: #f4f6ef;
+      text-align: center;
+      line-height: .9;
+      white-space: nowrap;
+      text-shadow: 0 3px 0 rgba(23,59,48,.55), 0 8px 22px rgba(0,0,0,.34);
+    }
+    .name span { display: inline-block; }
+    .one .name { font: 900 clamp(1.65rem, 7vw, 3.4rem)/.86 "Trebuchet MS", "Arial Rounded MT Bold", Avenir, sans-serif; letter-spacing: .015em; }
+    .two .name { font: 900 clamp(1.75rem, 7.3vw, 3.55rem)/.78 Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif; letter-spacing: .075em; transform: scaleX(.88); }
+    .three .name { font: 900 italic clamp(1.65rem, 7vw, 3.4rem)/.82 "Arial Black", "Segoe UI Black", sans-serif; letter-spacing: -.035em; transform: skewX(-7deg); }
+    .four .name { font: 900 clamp(1.65rem, 7vw, 3.4rem)/.82 "Cooper Black", "Rockwell Extra Bold", Georgia, serif; letter-spacing: -.035em; text-shadow: 0 3px 0 rgba(23,59,48,.68), 0 8px 22px rgba(0,0,0,.3); }
+    figcaption { padding: 12px 4px 0; color: #d8e1d2; }
+    figcaption strong { display: block; margin-bottom: 3px; color: #f4f6ef; }
+    figcaption span { color: #aebcac; font-size: .9rem; line-height: 1.35; }
+    @media (max-width: 880px) { .grid { grid-template-columns: repeat(2, minmax(160px, 1fr)); } }
+    @media (max-width: 480px) { body { padding: 20px 14px; } .grid { gap: 14px; } }
+    body.single { display: grid; justify-items: center; }
+    body.single h1, body.single .intro { width: min(620px, 100%); text-align: center; }
+    body.single .grid { width: min(380px, calc(100vw - 28px)); max-width: none; grid-template-columns: 1fr; }
+    body.single .proposal { display: none; }
+    body.single.only-1 .proposal:nth-child(1),
+    body.single.only-2 .proposal:nth-child(2),
+    body.single.only-3 .proposal:nth-child(3),
+    body.single.only-4 .proposal:nth-child(4) { display: block; }
+  </style>
+</head>
+<body>
+  <h1>Propuestas de nombre para Activa’t</h1>
+  <p class="intro">La imagen de fondo es exactamente la misma en las cuatro opciones. Solo cambia la tipografía, el peso, la inclinación y el tratamiento del nombre.</p>
+  <section class="grid" aria-label="Propuestas tipográficas">
+    <figure class="proposal one">
+      <div class="splash"><div class="name"><span>ACTIVA’T</span></div></div>
+      <figcaption><strong>1 · Redondeada energética</strong><span>Amable, activa y cercana; enlaza con las formas suaves de la ilustración.</span></figcaption>
+    </figure>
+    <figure class="proposal two">
+      <div class="splash"><div class="name"><span>ACTIVA’T</span></div></div>
+      <figcaption><strong>2 · Condensada deportiva</strong><span>Más compacta y con presencia de marca fitness.</span></figcaption>
+    </figure>
+    <figure class="proposal three">
+      <div class="splash"><div class="name"><span>ACTIVA’T</span></div></div>
+      <figcaption><strong>3 · Dinámica en movimiento</strong><span>Inclinación y trazo fuerte para transmitir ritmo y spinning.</span></figcaption>
+    </figure>
+    <figure class="proposal four">
+      <div class="splash"><div class="name"><span>ACTIVA’T</span></div></div>
+      <figcaption><strong>4 · Retro optimista</strong><span>Más expresiva y con un guiño setentero que conversa con la paleta.</span></figcaption>
+    </figure>
+  </section>
+  <script>
+    const only = new URLSearchParams(location.search).get('only');
+    if (/^[1-4]$/.test(only)) {
+      document.body.className = `single only-${only}`;
+      document.querySelector('h1').textContent = `Propuesta ${only} · Activa’t`;
+    }
+  </script>
+</body>
+</html>
